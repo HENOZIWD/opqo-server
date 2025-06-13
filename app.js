@@ -1,7 +1,7 @@
 const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL } = require('./utils/env.js');
 const { printAPIError } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
-const { generateJWT } = require('./utils/token.js');
+const { generateJWT, verifyJWT } = require('./utils/token.js');
 
 const express = require('express');
 const app = express();
@@ -90,7 +90,7 @@ app.get('/oauth2callback', cors(corsOptions), async (req, res) => {
         }
       });
 
-      console.log(`============ user ${email} generated\n`);
+      console.log(`============ user ${email} generated`);
     } else {
       if (refreshToken) {
         const updateRefreshToken = await prisma.user.update({
@@ -107,7 +107,7 @@ app.get('/oauth2callback', cors(corsOptions), async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    console.log(`============ user ${email} login\n`);
+    console.log(`============ user ${email} login`);
 
     return res.redirect('http://localhost:3000/auth');
   } catch (error) {
@@ -183,6 +183,26 @@ app.post('/signout', cors(corsOptions), (req, res) => {
     });
 
     return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
+  }
+});
+
+app.head('/verifyToken', cors(corsOptions), (req, res) => {
+  try {
+    const accessToken = req.headers['authorization']?.split(' ')[1];
+
+    if (!accessToken) {
+      throw new Error('No accessToken');
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error('Invalid Token');
+    }
+
+    return res.status(200).end();
+  } catch {
+    return res.status(401).end();
   }
 });
 
