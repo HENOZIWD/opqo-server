@@ -3,6 +3,10 @@ const { JWT_SECRET } = require('./env');
 
 function generateJWT(payload) {
   try {
+    if (!JWT_SECRET) {
+      throw new Error('No secret');
+    }
+
     const token = jwt.sign(payload, JWT_SECRET, {
       algorithm: 'HS256',
       expiresIn: 30 * 60 // 30 minutes
