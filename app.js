@@ -171,11 +171,11 @@ app.post('/refreshToken', cors(corsOptions), async (req, res) => {
   }
 });
 
-app.post('/signout', cors(corsOptions), async (req, res) => {
+app.post('/signout', cors(corsOptions), (req, res) => {
   try {
     res.clearCookie('refresh_token', cookieOptions);
 
-    return res.status(200);
+    return res.status(200).end();
   } catch (error) {
     printAPIError({
       name: '/signout',
