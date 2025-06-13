@@ -1,6 +1,7 @@
 const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL } = require('./utils/env.js');
 const { printAPIError } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
+const { generateJWT } = require('./utils/token.js');
 
 const express = require('express');
 const app = express();
@@ -13,19 +14,25 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 app.use(cookieParser());
+
 const cors = require('cors');
-const { generateJWT } = require('./utils/token.js');
 
 const corsOptions = {
   origin: 'http://localhost:3000',
   credentials: true,
 }
 
-app.get('/', (req, res) => {
+const cookieOptions = {
+  httpOnly: true,
+  secure: false,
+  sameSite: 'strict',
+}
+
+app.get('/', cors(corsOptions), (req, res) => {
   return res.send('Hello, World!');
 });
 
-app.get('/auth', (req, res) => {
+app.get('/auth', cors(corsOptions), (req, res) => {
   try {
     const oauth2Client = new google.auth.OAuth2(
       GOOGLE_OAUTH_CLIENT_ID,
@@ -42,14 +49,14 @@ app.get('/auth', (req, res) => {
   } catch (error) {
     printAPIError({
       name: '/auth',
-      error
+      error,
     });
 
     return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
   }
 });
 
-app.get('/oauth2callback', async (req, res) => {
+app.get('/oauth2callback', cors(corsOptions), async (req, res) => {
   try {
     const oauth2Client = new google.auth.OAuth2(
       GOOGLE_OAUTH_CLIENT_ID,
@@ -96,9 +103,7 @@ app.get('/oauth2callback', async (req, res) => {
     }
 
     res.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: 'strict',
+      ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -108,7 +113,7 @@ app.get('/oauth2callback', async (req, res) => {
   } catch (error) {
     printAPIError({
       name: '/oauth2callback',
-      error
+      error,
     });
 
     return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
@@ -159,7 +164,22 @@ app.post('/refreshToken', cors(corsOptions), async (req, res) => {
   } catch (error) {
     printAPIError({
       name: '/refreshToken',
-      error
+      error,
+    });
+
+    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
+  }
+});
+
+app.post('/signout', cors(corsOptions), async (req, res) => {
+  try {
+    res.clearCookie('refresh_token', cookieOptions);
+
+    return res.status(200);
+  } catch (error) {
+    printAPIError({
+      name: '/signout',
+      error,
     });
 
     return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
