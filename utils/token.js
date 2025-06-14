@@ -20,11 +20,21 @@ function generateJWT(payload) {
   }
 }
 
-function verifyJWT(token) {
+function verifyJWT(accessToken) {
   try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch (error) {
-    return null;
+    if (!accessToken) {
+      throw new Error('No accessToken');
+    }
+
+    const decodedToken = jwt.verify(accessToken, JWT_SECRET);
+
+    if (!decodedToken) {
+      throw new Error('Invalid Token');
+    }
+
+    return true;
+  } catch {
+    return false;
   }
 }
 

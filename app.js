@@ -29,7 +29,7 @@ const cookieOptions = {
 }
 
 app.get('/', cors(corsOptions), (req, res) => {
-  return res.send('Hello, World!');
+  return res.status(200).send('Hello, World!');
 });
 
 app.get('/auth', cors(corsOptions), (req, res) => {
@@ -160,7 +160,7 @@ app.post('/refreshToken', cors(corsOptions), async (req, res) => {
       return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
     }
 
-    return res.json({ accessToken });
+    return res.status(200).json({ accessToken });
   } catch (error) {
     printAPIError({
       name: '/refreshToken',
@@ -190,19 +190,43 @@ app.head('/verifyToken', cors(corsOptions), (req, res) => {
   try {
     const accessToken = req.headers['authorization']?.split(' ')[1];
 
-    if (!accessToken) {
-      throw new Error('No accessToken');
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
+    if (!verifyJWT(accessToken)) {
       throw new Error('Invalid Token');
     }
 
     return res.status(200).end();
   } catch {
     return res.status(401).end();
+  }
+});
+
+app.get('/channel/:id', cors(corsOptions), async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      return res.status(404).end();
+    }
+
+    return res.status(200).json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      description: user.description,
+      createdDate: user.createdDate,
+      picture: user.picture,
+    });
+  } catch (error) {
+    printAPIError({
+      name: '/channel/:id',
+      error,
+    });
+
+    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
   }
 });
 
