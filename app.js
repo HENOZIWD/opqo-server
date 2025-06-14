@@ -1,7 +1,7 @@
 const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL } = require('./utils/env.js');
-const { printAPIError } = require('./utils/error');
+const { printAPIError, ERROR_400, ERROR_401 } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
-const { generateJWT, verifyJWT } = require('./utils/token.js');
+const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
 
 const express = require('express');
 const app = express();
@@ -10,17 +10,23 @@ const port = 8080;
 const { google } = require('googleapis');
 const cookieParser = require('cookie-parser');
 const { PrismaClient } = require('@prisma/client');
+const { z } = require('zod');
 
 const prisma = new PrismaClient();
 
 app.use(cookieParser());
+app.use(express.json());
 
 const cors = require('cors');
 
 const corsOptions = {
   origin: 'http://localhost:3000',
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }
+
+app.use(cors(corsOptions));
 
 const cookieOptions = {
   httpOnly: true,
@@ -28,11 +34,11 @@ const cookieOptions = {
   sameSite: 'strict',
 }
 
-app.get('/', cors(corsOptions), (req, res) => {
+app.get('/', (req, res) => {
   return res.status(200).send('Hello, World!');
 });
 
-app.get('/auth', cors(corsOptions), (req, res) => {
+app.get('/auth', (req, res) => {
   try {
     const oauth2Client = new google.auth.OAuth2(
       GOOGLE_OAUTH_CLIENT_ID,
@@ -56,7 +62,7 @@ app.get('/auth', cors(corsOptions), (req, res) => {
   }
 });
 
-app.get('/oauth2callback', cors(corsOptions), async (req, res) => {
+app.get('/oauth2callback', async (req, res) => {
   try {
     const oauth2Client = new google.auth.OAuth2(
       GOOGLE_OAUTH_CLIENT_ID,
@@ -120,7 +126,7 @@ app.get('/oauth2callback', cors(corsOptions), async (req, res) => {
   }
 });
 
-app.post('/refreshToken', cors(corsOptions), async (req, res) => {
+app.post('/refreshToken', async (req, res) => {
   try {
     const refreshToken = req.cookies['refresh_token'];
 
@@ -149,11 +155,18 @@ app.post('/refreshToken', cors(corsOptions), async (req, res) => {
       return res.status(401).json({ error: 'Invalid Token' });
     }
 
+    if (data.picture !== user.picture) {
+      const updateUserPicture = await prisma.user.update({
+        where: { id: data.id },
+        data: { picture: data.picture },
+      });
+    }
+
     const accessToken = generateJWT({
       id: user.id,
       email: user.email,
       name: user.name,
-      picture: user.picture,
+      picture: data.picture !== user.picture ? data.picture : user.picture,
     });
 
     if (!accessToken) {
@@ -171,7 +184,7 @@ app.post('/refreshToken', cors(corsOptions), async (req, res) => {
   }
 });
 
-app.post('/signout', cors(corsOptions), (req, res) => {
+app.post('/signout', (req, res) => {
   try {
     res.clearCookie('refresh_token', cookieOptions);
 
@@ -186,12 +199,18 @@ app.post('/signout', cors(corsOptions), (req, res) => {
   }
 });
 
-app.head('/verifyToken', cors(corsOptions), (req, res) => {
+app.head('/verifyToken', (req, res) => {
   try {
-    const accessToken = req.headers['authorization']?.split(' ')[1];
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ');
 
-    if (!verifyJWT(accessToken)) {
-      throw new Error('Invalid Token');
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
     }
 
     return res.status(200).end();
@@ -200,7 +219,7 @@ app.head('/verifyToken', cors(corsOptions), (req, res) => {
   }
 });
 
-app.get('/channel/:id', cors(corsOptions), async (req, res) => {
+app.get('/channel/:id', async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -227,6 +246,108 @@ app.get('/channel/:id', cors(corsOptions), async (req, res) => {
     });
 
     return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
+  }
+});
+
+app.get('/studio', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ');
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const id = decodedToken.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new Error('Invalid user');
+    }
+
+    return res.status(200).json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      description: user.description,
+      createdDate: user.createdDate,
+      picture: user.picture,
+    });
+  } catch (error) {
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.put('/studio', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ');
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const id = decodedToken.id;
+
+    const infoSchema = z.object({
+      name: z.string().optional(),
+      description: z.string().optional(),
+    });
+
+    const payload = infoSchema.safeParse(req.body);
+
+    if (!payload.success) {
+      throw new Error(ERROR_400);
+    }
+
+    const { name, description } = payload.data;
+
+    if (!name && !description) {
+      throw new Error(ERROR_400);
+    }
+
+    const updateData = {};
+
+    if (name) {
+      updateData.name = name;
+    }
+    if (description) {
+      updateData.description = description;
+    }
+
+    const updateInfo = await prisma.user.update({
+      where: { id },
+      data: updateData,
+    });
+
+    return res.status(200).end();
+  } catch (error) {
+    if (error.message === ERROR_400) {
+      return res.status(400).end();
+    }
+
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    return res.status(500).end();
   }
 });
 
