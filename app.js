@@ -757,7 +757,43 @@ app.get('/videoList', async (req, res) => {
     }));
 
     return res.status(200).json(result);
-  } catch (error) {
+  } catch {
+    return res.status(500).end();
+  }
+});
+
+app.get('/video/:videoId', async (req, res) => {
+  try {
+    const { videoId } = req.params;
+
+    const findVideo = await prisma.video.findUnique({
+      where: {
+        id: videoId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            picture: true,
+          },
+        },
+      },
+    });
+
+    if (!findVideo) {
+      return res.status(404).end();
+    }
+
+    return res.status(200).json({
+      id: findVideo.id,
+      title: findVideo.title,
+      description: findVideo.description,
+      createdDate: findVideo.createdDate,
+      duration: findVideo.duration,
+      channel: findVideo.user,
+    });
+  } catch {
     return res.status(500).end();
   }
 });
