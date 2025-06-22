@@ -14,10 +14,12 @@ function printError({
 
 const ERROR_400 = 'BAD_REQUEST';
 const ERROR_401 = 'UNAUTHORIZED';
+const ERROR_404 = 'NOT_FOUND';
 
 module.exports = {
   printAPIError,
   printError,
   ERROR_400,
   ERROR_401,
+  ERROR_404,
 };

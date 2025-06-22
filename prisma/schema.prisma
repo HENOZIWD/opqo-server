@@ -16,3 +16,26 @@ model User {
   createdDate  DateTime @default(now())
   picture      String
 }
+
+model Video {
+  id              String   @id @unique @default(cuid())
+  hash            String
+  width           Int
+  height          Int
+  duration        Float
+  extension       String
+  size            Int
+  userId          String
+  totalChunkCount Int
+  createdDate     DateTime @default(now())
+  description     String?
+  title           String?
+  isUploaded      Boolean  @default(false)
+}
+
+model VideoChunk {
+  videoId    String
+  chunkIndex Int
+
+  @@id([videoId, chunkIndex])
+}

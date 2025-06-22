@@ -1,7 +1,8 @@
 const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL } = require('./utils/env.js');
-const { printAPIError, ERROR_400, ERROR_401 } = require('./utils/error');
+const { printAPIError, ERROR_400, ERROR_401, ERROR_404 } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
 const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
+const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p } = require('./utils/video.js');
 
 const express = require('express');
 const app = express();
@@ -11,6 +12,16 @@ const { google } = require('googleapis');
 const cookieParser = require('cookie-parser');
 const { PrismaClient } = require('@prisma/client');
 const { z } = require('zod');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20 MiB
+  },
+});
 
 const prisma = new PrismaClient();
 
@@ -49,6 +60,7 @@ app.get('/auth', (req, res) => {
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: ['email', 'openid'],
+      prompt: 'select_account',
     });
 
     return res.redirect(authUrl);
@@ -105,6 +117,29 @@ app.get('/oauth2callback', async (req, res) => {
         });
       } else {
         refreshToken = user.refreshToken;
+
+        const oauth2ClientToCheckRefreshToken = new google.auth.OAuth2(
+          GOOGLE_OAUTH_CLIENT_ID,
+          GOOGLE_OAUTH_CLIENT_SECRET,
+          GOOGLE_OAUTH_REDIRECT_URL,
+        );
+
+        oauth2ClientToCheckRefreshToken.setCredentials({
+          refresh_token: refreshToken,
+        });
+
+        try {
+          await oauth2ClientToCheckRefreshToken.getAccessToken();
+        } catch {
+          const authUrl = oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: ['email', 'openid'],
+            prompt: 'consent',
+            login_hint: email,
+          });
+
+          return res.redirect(authUrl);
+        }
       }
     }
 
@@ -201,7 +236,7 @@ app.post('/signout', (req, res) => {
 
 app.head('/verifyToken', (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ');
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
 
     if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
       throw new Error(ERROR_401);
@@ -251,7 +286,7 @@ app.get('/channel/:id', async (req, res) => {
 
 app.get('/studio', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ');
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
 
     if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
       throw new Error(ERROR_401);
@@ -292,7 +327,7 @@ app.get('/studio', async (req, res) => {
 
 app.put('/studio', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ');
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
 
     if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
       throw new Error(ERROR_401);
@@ -345,6 +380,346 @@ app.put('/studio', async (req, res) => {
 
     if (error.message === ERROR_401) {
       return res.status(401).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.post('/uploadVideo/metadata', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const videoMetadataSchema = z.object({
+      hash: z.string(),
+      width: z.number(),
+      height: z.number(),
+      duration: z.number(),
+      extension: z.string(),
+      size: z.number(),
+      totalChunkCount: z.number(),
+    });
+
+    const payload = videoMetadataSchema.safeParse(req.body);
+
+    if (!payload.success) {
+      throw new Error(ERROR_400);
+    }
+
+    const findVideoMetadata = await prisma.video.findFirst({
+      where: {
+        hash: payload.data.hash,
+        userId: decodedToken.id,
+        isUploaded: false,
+      },
+    });
+
+    if (!findVideoMetadata) {
+      const generateVideoMetadata = await prisma.video.create({
+        data: {
+          hash: payload.data.hash,
+          width: payload.data.width,
+          height: payload.data.height,
+          duration: payload.data.duration,
+          extension: payload.data.extension,
+          size: payload.data.size,
+          userId: decodedToken.id,
+          totalChunkCount: payload.data.totalChunkCount,
+        }
+      });
+
+      return res.status(200).json({ id: generateVideoMetadata.id });
+    }
+
+    return res.status(200).json({ id: findVideoMetadata.id });
+  } catch (error) {
+    if (error.message === ERROR_400) {
+      return res.status(400).end();
+    }
+
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const videoId = req.params.videoId;
+    const chunkIndex = Number(req.params.chunkIndex);
+
+    if (Number.isNaN(chunkIndex)) {
+      throw new Error(ERROR_400);
+    }
+    
+    const findVideo = await prisma.video.findUnique({ where: { id: videoId } });
+
+    if (!findVideo || findVideo.userId !== decodedToken.id) {
+      throw new Error(ERROR_404);
+    }
+
+    const findVideoChunk = await prisma.videoChunk.findUnique({
+      where: {
+        videoId_chunkIndex: {
+          videoId,
+          chunkIndex,
+        }
+      }
+    });
+
+    if (!findVideoChunk) {
+      throw new Error(ERROR_404);
+    }
+
+    return res.status(200).end();
+  } catch (error) {
+    if (error.message === ERROR_400) {
+      return res.status(400).end();
+    }
+
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    if (error.message === ERROR_404) {
+      return res.status(404).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const videoId = req.params.videoId;
+    const chunkIndex = Number(req.params.chunkIndex);
+
+    if (Number.isNaN(chunkIndex)) {
+      throw new Error(ERROR_400);
+    }
+
+    const fileBuffer = req.file?.buffer;
+
+    if (!fileBuffer) {
+      throw new Error(ERROR_400);
+    }
+    
+    const findVideo = await prisma.video.findUnique({ where: { id: videoId } });
+
+    if (!findVideo || findVideo.userId !== decodedToken.id) {
+      throw new Error(ERROR_404);
+    }
+
+    const chunkDir = path.join(__dirname, UPLOAD_DIR, videoId, CHUNK_DIR);
+
+    if (!fs.existsSync(chunkDir)) {
+      fs.mkdirSync(chunkDir, { recursive: true });
+    }
+
+    const chunkPath = path.join(chunkDir, `${chunkIndex}`);
+
+    fs.writeFileSync(chunkPath, fileBuffer);
+
+    const updateChunk = await prisma.videoChunk.upsert({
+      where: {
+        videoId_chunkIndex: {
+          videoId,
+          chunkIndex,
+        },
+      },
+      update: {},
+      create: {
+        videoId,
+        chunkIndex,
+      }
+    });
+
+    return res.status(200).end();
+  } catch (error) {
+    if (error.message === ERROR_400) {
+      return res.status(400).end();
+    }
+
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    if (error.message === ERROR_404) {
+      return res.status(404).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const videoSchema = z.object({
+      title: z.string(),
+      description: z.string(),
+    });
+
+    const payload = videoSchema.safeParse(req.body);
+
+    if (!payload.success) {
+      throw new Error(ERROR_400);
+    }
+
+    const { title, description } = payload.data;
+
+    const thumbnailImage = req.file;
+
+    if (!thumbnailImage) {
+      throw new Error(ERROR_400);
+    }
+
+    const videoId = req.params.videoId;
+    
+    const findVideo = await prisma.video.findUnique({ where: { id: videoId } });
+
+    if (!findVideo || findVideo.userId !== decodedToken.id) {
+      throw new Error(ERROR_404);
+    }
+
+    const chunkDir = path.join(__dirname, UPLOAD_DIR, videoId, CHUNK_DIR);
+    const chunkFiles = fs.readdirSync(chunkDir).map((chunkFileName) => parseInt(chunkFileName)).sort((a, b) => a - b);
+
+    const videoDir = path.join(__dirname, UPLOAD_DIR, videoId, VIDEO_DIR);
+
+    if (!fs.existsSync(videoDir)) {
+      fs.mkdirSync(videoDir, { recursive: true });
+    }
+
+    const videoPath = path.join(videoDir, 'index.mp4');
+
+    if (fs.existsSync(videoPath)) {
+      fs.unlinkSync(videoPath);
+    }
+
+    const fsPromises = fs.promises;
+
+    for (const chunkFileIndex of chunkFiles) {
+      const chunkFilePath = path.join(chunkDir, `${chunkFileIndex}`);
+      const chunkData = fs.readFileSync(chunkFilePath);
+      await fsPromises.appendFile(videoPath, chunkData);
+      fs.unlinkSync(chunkFilePath);
+    }
+
+    fs.rmSync(chunkDir, { recursive: true, force: true });
+
+    const updateVideoData = await prisma.video.update({
+      where: {
+        id: videoId,
+      },
+      data: {
+        title,
+        description,
+      },
+    });
+
+    const { extension, width, height } = findVideo;
+
+    let screen;
+    let targetList = [];
+
+    if (width > height) {
+      screen = SCREEN_LANDSCAPE;
+
+      if (height >= 1080) {
+        targetList.push(TARGET_1080p);
+      }
+
+      if (height >= 720) {
+        targetList.push(TARGET_720p);
+      }
+
+      targetList.push(TARGET_360p);
+    } else {
+      screen = SCREEN_PORTRAIT;
+
+      if (width >= 1080) {
+        targetList.push(TARGET_1080p);
+      }
+
+      if (width >= 720) {
+        targetList.push(TARGET_720p);
+      }
+
+      targetList.push(TARGET_360p);
+    }
+
+    for (const target of targetList) {
+      generateHlsVideo({
+        videoId,
+        extension,
+        originalWidth: width,
+        originalHeight: height,
+        screen,
+        target,
+        dirname: __dirname,
+      });
+    }
+
+    return res.status(200).end();
+  } catch (error) {
+    if (error.message === ERROR_400) {
+      return res.status(400).end();
+    }
+
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    if (error.message === ERROR_404) {
+      return res.status(404).end();
     }
 
     return res.status(500).end();
