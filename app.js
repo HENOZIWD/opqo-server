@@ -731,6 +731,37 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
   }
 });
 
+app.get('/videoList', async (req, res) => {
+  try {
+    const findVideoList = await prisma.video.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            picture: true,
+          },
+        },
+      },
+      orderBy: {
+        createdDate: 'desc',
+      },
+    });
+
+    const result = findVideoList.map((video) => ({
+      id: video.id,
+      title: video.title,
+      createdDate: video.createdDate,
+      duration: video.duration,
+      channel: video.user,
+    }));
+
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).end();
+  }
+});
+
 app.listen(port, () => {
   console.log(`OpqO server listening on port ${port}`);
 });
