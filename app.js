@@ -734,6 +734,9 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
 app.get('/videoList', async (req, res) => {
   try {
     const findVideoList = await prisma.video.findMany({
+      where: {
+        isUploaded: true,
+      },
       include: {
         user: {
           select: {
@@ -805,6 +808,7 @@ app.get('/:channelId/videoList', async (req, res) => {
     const findVideoList = await prisma.video.findMany({
       where: {
         userId: channelId,
+        isUploaded: true,
       },
       orderBy: {
         createdDate: 'desc',
