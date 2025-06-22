@@ -798,6 +798,33 @@ app.get('/video/:videoId', async (req, res) => {
   }
 });
 
+app.get('/:channelId/videoList', async (req, res) => {
+  try {
+    const { channelId } = req.params;
+
+    const findVideoList = await prisma.video.findMany({
+      where: {
+        userId: channelId,
+      },
+      orderBy: {
+        createdDate: 'desc',
+      },
+    });
+
+    const result = findVideoList.map((video) => ({
+      id: video.id,
+      title: video.title,
+      createdDate: video.createdDate,
+      duration: video.duration,
+    }));
+
+    return res.status(200).json(result);
+
+  } catch {
+    return res.status(500).end();
+  }
+});
+
 app.listen(port, () => {
   console.log(`OpqO server listening on port ${port}`);
 });
