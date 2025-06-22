@@ -4,6 +4,7 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { AWS_S3_BUCKET_NAME } = require('./env');
+const sharp = require('sharp');
 
 const prisma = new PrismaClient();
 const client = new S3Client({ region: 'ap-northeast-2' });
@@ -185,6 +186,27 @@ function generateHlsVideo({ videoId, extension, originalWidth, originalHeight, s
   });
 }
 
+async function uploadThumbnailToS3({ videoId, thumbnailBuffer }) {
+  const convertedBuffer = await sharp(thumbnailBuffer)
+    .webp({ quality: 80 })
+    .toBuffer();
+
+  const uploadParams = {
+    Bucket: AWS_S3_BUCKET_NAME,
+    Key: `${videoId}/thumbnail.webp`,
+    Body: convertedBuffer,
+    ContentType: 'image/webp',
+  };
+
+  try {
+    await client.send(new PutObjectCommand(uploadParams));
+    console.log(`Thumbnail uploaded: ${uploadParams.Key}`);
+  } catch (error) {
+    console.error(`Failed to upload thumbnail: ${error}`);
+    throw error;
+  }
+}
+
 module.exports = {
   UPLOAD_DIR,
   CHUNK_DIR,
@@ -195,4 +217,5 @@ module.exports = {
   TARGET_720p,
   TARGET_360p,
   generateHlsVideo,
+  uploadThumbnailToS3,
 };

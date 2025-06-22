@@ -2,7 +2,7 @@ const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIREC
 const { printAPIError, ERROR_400, ERROR_401, ERROR_404 } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
 const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
-const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p } = require('./utils/video.js');
+const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, uploadThumbnailToS3 } = require('./utils/video.js');
 
 const express = require('express');
 const app = express();
@@ -628,6 +628,11 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
     if (!findVideo || findVideo.userId !== decodedToken.id) {
       throw new Error(ERROR_404);
     }
+
+    await uploadThumbnailToS3({
+      videoId,
+      thumbnailBuffer: thumbnailImage.buffer,
+    });
 
     const chunkDir = path.join(__dirname, UPLOAD_DIR, videoId, CHUNK_DIR);
     const chunkFiles = fs.readdirSync(chunkDir).map((chunkFileName) => parseInt(chunkFileName)).sort((a, b) => a - b);
