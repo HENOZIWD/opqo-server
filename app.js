@@ -772,6 +772,7 @@ app.get('/video/:videoId', async (req, res) => {
     const findVideo = await prisma.video.findUnique({
       where: {
         id: videoId,
+        isUploaded: true,
       },
       include: {
         user: {
@@ -801,7 +802,7 @@ app.get('/video/:videoId', async (req, res) => {
   }
 });
 
-app.get('/:channelId/videoList', async (req, res) => {
+app.get('/channel/:channelId/videoList', async (req, res) => {
   try {
     const { channelId } = req.params;
 
@@ -825,6 +826,125 @@ app.get('/:channelId/videoList', async (req, res) => {
     return res.status(200).json(result);
 
   } catch {
+    return res.status(500).end();
+  }
+});
+
+app.get('/studio/videoList', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const id = decodedToken.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new Error(ERROR_401);
+    }
+
+    const findVideoList = await prisma.video.findMany({
+      where: {
+        userId: id,
+        NOT: {
+          title: null,
+        },
+      },
+      orderBy: {
+        createdDate: 'desc',
+      },
+    });
+
+    const result = findVideoList.map((video) => ({
+      id: video.id,
+      title: video.title,
+      createdDate: video.createdDate,
+      duration: video.duration,
+      isUploaded: video.isUploaded,
+    }));
+
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.get('/studio/video/:videoId', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const id = decodedToken.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new Error(ERROR_401);
+    }
+
+    const { videoId } = req.params;
+
+    const findVideo = await prisma.video.findFirst({
+      where: {
+        id: videoId,
+        userId: id,
+        NOT: {
+          title: null,
+        },
+      },
+    });
+
+    if (!findVideo) {
+      throw new Error(ERROR_404);
+    }
+
+    return res.status(200).json({
+      id: findVideo.id,
+      width: findVideo.width,
+      height: findVideo.height,
+      duration: findVideo.duration,
+      size: findVideo.size,
+      extension: findVideo.extension,
+      createdDate: findVideo.createdDate,
+      title: findVideo.title,
+      description: findVideo.description,
+      isUploaded: findVideo.isUploaded,
+    });
+  } catch (error) {
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    if (error.message === ERROR_404) {
+      return res.status(404).end();
+    }
+
     return res.status(500).end();
   }
 });
