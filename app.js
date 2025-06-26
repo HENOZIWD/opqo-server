@@ -342,8 +342,14 @@ app.put('/studio', async (req, res) => {
     const id = decodedToken.id;
 
     const infoSchema = z.object({
-      name: z.string().optional(),
-      description: z.string().optional(),
+      name: z.string()
+        .optional()
+        .transform((str) => str.trim())
+        .min(1)
+        .max(50),
+      description: z.string()
+        .optional()
+        .max(1000),
     });
 
     const payload = infoSchema.safeParse(req.body);
@@ -603,8 +609,12 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
     }
 
     const videoSchema = z.object({
-      title: z.string(),
-      description: z.string(),
+      title: z.string()
+        .transform((str) => str.trim())
+        .min(1)
+        .max(100),
+      description: z.string()
+        .max(5000),
     });
 
     const payload = videoSchema.safeParse(req.body);

@@ -11,8 +11,8 @@ model User {
   id           String   @id @unique
   refreshToken String
   email        String   @unique
-  name         String
-  description  String   @default("")
+  name         String   @db.VarChar(50)
+  description  String   @default("") @db.VarChar(1000)
   createdDate  DateTime @default(now())
   picture      String
   videos       Video[]  @relation("UserVideos")
@@ -29,8 +29,8 @@ model Video {
   userId          String
   totalChunkCount Int
   createdDate     DateTime @default(now())
-  description     String?
-  title           String?
+  description     String?  @db.VarChar(5000)
+  title           String?  @db.VarChar(100)
   isUploaded      Boolean  @default(false)
   user            User     @relation("UserVideos", fields: [userId], references: [id])
 }
