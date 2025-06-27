@@ -343,12 +343,9 @@ app.put('/studio', async (req, res) => {
 
     const infoSchema = z.object({
       name: z.string()
-        .optional()
         .transform((str) => str.trim())
-        .min(1)
-        .max(50),
+        .refine((str) => 1 <= str.length && str.length <= 50),
       description: z.string()
-        .optional()
         .max(1000),
     });
 
@@ -360,22 +357,12 @@ app.put('/studio', async (req, res) => {
 
     const { name, description } = payload.data;
 
-    if (!name && !description) {
-      throw new Error(ERROR_400);
-    }
-
-    const updateData = {};
-
-    if (name) {
-      updateData.name = name;
-    }
-    if (description) {
-      updateData.description = description;
-    }
-
     const updateInfo = await prisma.user.update({
       where: { id },
-      data: updateData,
+      data: {
+        name,
+        description,
+      },
     });
 
     return res.status(200).end();
@@ -611,8 +598,7 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
     const videoSchema = z.object({
       title: z.string()
         .transform((str) => str.trim())
-        .min(1)
-        .max(100),
+        .refine((str) => 1 <= str.length && str.length <= 100),
       description: z.string()
         .max(5000),
     });
