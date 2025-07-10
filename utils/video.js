@@ -2,7 +2,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const { AWS_S3_BUCKET_NAME } = require('./env');
 const sharp = require('sharp');
 
@@ -207,6 +207,38 @@ async function uploadThumbnailToS3({ videoId, thumbnailBuffer }) {
   }
 }
 
+async function deleteVideoFromS3({ videoId }) {
+  let continuationToken = undefined;
+
+  do {
+    const listParams = {
+      Bucket: AWS_S3_BUCKET_NAME,
+      Prefix: videoId,
+      ContinuationToken: continuationToken,
+    };
+
+    const listedObjects = await client.send(new ListObjectsV2Command(listParams));
+
+    if (!listedObjects.Contents || listedObjects.Contents.length === 0) {
+      return;
+    }
+
+    const deleteParams = {
+      Bucket: AWS_S3_BUCKET_NAME,
+      Delete: {
+        Objects: listedObjects.Contents
+          .filter((obj) => obj.Key)
+          .map((obj) => ({ Key: obj.Key })),
+      },
+    };
+
+    const deleteResult = await client.send(new DeleteObjectsCommand(deleteParams));
+
+    continuationToken = listedObjects.IsTruncated ? listedObjects.NextContinuationToken : undefined;
+
+  } while (continuationToken);
+}
+
 module.exports = {
   UPLOAD_DIR,
   CHUNK_DIR,
@@ -218,4 +250,5 @@ module.exports = {
   TARGET_360p,
   generateHlsVideo,
   uploadThumbnailToS3,
+  deleteVideoFromS3,
 };

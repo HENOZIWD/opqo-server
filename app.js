@@ -1,8 +1,8 @@
 const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL } = require('./utils/env.js');
-const { printAPIError, ERROR_400, ERROR_401, ERROR_404 } = require('./utils/error');
+const { printAPIError, ERROR_400, ERROR_401, ERROR_404, ERROR_403 } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
 const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
-const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, uploadThumbnailToS3 } = require('./utils/video.js');
+const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, uploadThumbnailToS3, deleteVideoFromS3 } = require('./utils/video.js');
 
 const express = require('express');
 const app = express();
@@ -33,9 +33,9 @@ const cors = require('cors');
 const corsOptions = {
   origin: 'http://localhost:3000',
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}
+};
 
 app.use(cors(corsOptions));
 
@@ -471,8 +471,12 @@ app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
     
     const findVideo = await prisma.video.findUnique({ where: { id: videoId } });
 
-    if (!findVideo || findVideo.userId !== decodedToken.id) {
+    if (!findVideo) {
       throw new Error(ERROR_404);
+    }
+    
+    if (findVideo.userId !== decodedToken.id) {
+      throw new Error(ERROR_403);
     }
 
     const findVideoChunk = await prisma.videoChunk.findUnique({
@@ -496,6 +500,10 @@ app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
 
     if (error.message === ERROR_401) {
       return res.status(401).end();
+    }
+
+    if (error.message === ERROR_403) {
+      return res.status(403).end();
     }
 
     if (error.message === ERROR_404) {
@@ -535,8 +543,12 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
     
     const findVideo = await prisma.video.findUnique({ where: { id: videoId } });
 
-    if (!findVideo || findVideo.userId !== decodedToken.id) {
+    if (!findVideo) {
       throw new Error(ERROR_404);
+    }
+
+    if (findVideo.userId !== decodedToken.id) {
+      throw new Error(ERROR_403);
     }
 
     const chunkDir = path.join(__dirname, UPLOAD_DIR, videoId, CHUNK_DIR);
@@ -571,6 +583,10 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
 
     if (error.message === ERROR_401) {
       return res.status(401).end();
+    }
+
+    if (error.message === ERROR_403) {
+      return res.status(403).end();
     }
 
     if (error.message === ERROR_404) {
@@ -621,8 +637,12 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
     
     const findVideo = await prisma.video.findUnique({ where: { id: videoId } });
 
-    if (!findVideo || findVideo.userId !== decodedToken.id) {
+    if (!findVideo) {
       throw new Error(ERROR_404);
+    }
+    
+    if (findVideo.userId !== decodedToken.id) {
+      throw new Error(ERROR_403);
     }
 
     await uploadThumbnailToS3({
@@ -717,6 +737,10 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
 
     if (error.message === ERROR_401) {
       return res.status(401).end();
+    }
+
+    if (error.message === ERROR_403) {
+      return res.status(403).end();
     }
 
     if (error.message === ERROR_404) {
@@ -894,10 +918,10 @@ app.get('/studio/video/:videoId', async (req, res) => {
       throw new Error(ERROR_401);
     }
 
-    const id = decodedToken.id;
+    const userId = decodedToken.id;
 
     const user = await prisma.user.findUnique({
-      where: { id },
+      where: { id: userId },
     });
 
     if (!user) {
@@ -909,7 +933,7 @@ app.get('/studio/video/:videoId', async (req, res) => {
     const findVideo = await prisma.video.findFirst({
       where: {
         id: videoId,
-        userId: id,
+        userId,
         NOT: {
           title: null,
         },
@@ -935,6 +959,172 @@ app.get('/studio/video/:videoId', async (req, res) => {
   } catch (error) {
     if (error.message === ERROR_401) {
       return res.status(401).end();
+    }
+
+    if (error.message === ERROR_404) {
+      return res.status(404).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.patch('/studio/video/:videoId', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const userId = decodedToken.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new Error(ERROR_401);
+    }
+
+    const { videoId } = req.params;
+
+    const findVideo = await prisma.video.findFirst({
+      where: {
+        id: videoId,
+        NOT: {
+          title: null,
+        },
+      },
+    });
+
+    if (!findVideo) {
+      throw new Error(ERROR_404);
+    }
+
+    if (findVideo.userId !== userId) {
+      throw new Error(ERROR_403);
+    }
+
+    const videoInfoSchema = z.object({
+      title: z.string()
+        .transform((str) => str.trim())
+        .refine((str) => 1 <= str.length && str.length <= 100),
+      description: z.string()
+        .max(5000),
+    });
+
+    const payload = videoInfoSchema.safeParse(req.body);
+
+    if (!payload.success) {
+      throw new Error(ERROR_400);
+    }
+
+    const { title, description } = payload.data;
+
+    const updateVideoInfo = await prisma.video.update({
+      where: {
+        id: videoId,
+        userId,
+        NOT: {
+          title: null,
+        },
+      },
+      data: {
+        title,
+        description,
+      },
+    });
+
+    return res.status(200).end();
+  } catch (error) {
+    if (error.message === ERROR_400) {
+      return res.status(400).end();
+    }
+
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    if (error.message === ERROR_403) {
+      return res.status(403).end();
+    }
+
+    if (error.message === ERROR_404) {
+      return res.status(404).end();
+    }
+
+    return res.status(500).end();
+  }
+});
+
+app.delete('/studio/video/:videoId', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const userId = decodedToken.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new Error(ERROR_401);
+    }
+
+    const { videoId } = req.params;
+
+    const findVideo = await prisma.video.findFirst({
+      where: {
+        id: videoId,
+        NOT: {
+          title: null,
+        },
+      },
+    });
+
+    if (!findVideo) {
+      throw new Error(ERROR_404);
+    }
+
+    if (findVideo.userId !== userId) {
+      throw new Error(ERROR_403);
+    }
+
+    const deleteVideo = await prisma.video.delete({
+      where: { id: videoId },
+    });
+
+    const deleteVideoChunk = await prisma.videoChunk.deleteMany({
+      where: { videoId },
+    });
+
+    deleteVideoFromS3({ videoId });
+
+    return res.status(200).end();
+  } catch (error) {
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    if (error.message === ERROR_403) {
+      return res.status(403).end();
     }
 
     if (error.message === ERROR_404) {

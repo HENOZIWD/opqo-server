@@ -14,6 +14,7 @@ function printError({
 
 const ERROR_400 = 'BAD_REQUEST';
 const ERROR_401 = 'UNAUTHORIZED';
+const ERROR_403 = 'FORBIDDEN';
 const ERROR_404 = 'NOT_FOUND';
 
 module.exports = {
@@ -21,5 +22,6 @@ module.exports = {
   printError,
   ERROR_400,
   ERROR_401,
+  ERROR_403,
   ERROR_404,
 };
