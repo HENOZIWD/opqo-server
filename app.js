@@ -414,6 +414,9 @@ app.post('/uploadVideo/metadata', async (req, res) => {
         hash: payload.data.hash,
         userId: decodedToken.id,
         isUploaded: false,
+        NOT: {
+          title: null,
+        },
       },
     });
 
@@ -684,6 +687,10 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
         title,
         description,
       },
+    });
+
+    const removeVideoChunks = await prisma.videoChunk.deleteMany({
+      where: { videoId },
     });
 
     const { extension, width, height } = findVideo;
