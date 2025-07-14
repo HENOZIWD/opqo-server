@@ -289,7 +289,7 @@ app.delete('/channel', async (req, res) => {
 
     console.log(`============ user ${email} deleted`);
 
-    return res.redirect('http://localhost:3000');
+    return res.status(200).end();
   } catch (error) {
     if (error.message === ERROR_401) {
       return res.status(401).end();
