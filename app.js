@@ -98,6 +98,17 @@ app.get('/oauth2callback', async (req, res) => {
     });
 
     if (!user) {
+      if (!refreshToken) {
+        const authUrl = oauth2Client.generateAuthUrl({
+          access_type: 'offline',
+          scope: ['email', 'openid'],
+          prompt: 'consent',
+          login_hint: email,
+        });
+
+        return res.redirect(authUrl);
+      }
+
       const generateUser = await prisma.user.create({
         data: {
           id,
@@ -268,7 +279,7 @@ app.delete('/channel', async (req, res) => {
       throw new Error(ERROR_401);
     }
 
-    const userId = decodedToken;
+    const userId = decodedToken.id;
 
     const findUser = await prisma.user.findUnique({
       where: { id: userId },
@@ -277,7 +288,7 @@ app.delete('/channel', async (req, res) => {
       },
     });
 
-    findUser.videos.forEach(({ id }) => {
+    findUser.videos?.forEach(({ id }) => {
       deleteVideoResources({ videoId: id, dirname: __dirname });
     });
 
@@ -287,10 +298,11 @@ app.delete('/channel', async (req, res) => {
 
     res.clearCookie('refresh_token', cookieOptions);
 
-    console.log(`============ user ${email} deleted`);
+    console.log(`============ user ${findUser.email} deleted`);
 
     return res.status(200).end();
   } catch (error) {
+    console.error(error);
     if (error.message === ERROR_401) {
       return res.status(401).end();
     }
