@@ -2,7 +2,7 @@ const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIREC
 const { printAPIError, ERROR_400, ERROR_401, ERROR_404, ERROR_403 } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
 const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
-const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, uploadThumbnailToS3, deleteVideoFromS3 } = require('./utils/video.js');
+const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, uploadThumbnailToS3, deleteVideoFromS3, deleteVideoResources } = require('./utils/video.js');
 
 const express = require('express');
 const app = express();
@@ -251,6 +251,51 @@ app.head('/verifyToken', (req, res) => {
     return res.status(200).end();
   } catch {
     return res.status(401).end();
+  }
+});
+
+app.delete('/channel', async (req, res) => {
+  try {
+    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const userId = decodedToken;
+
+    const findUser = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        videos: true,
+      },
+    });
+
+    findUser.videos.forEach(({ id }) => {
+      deleteVideoResources({ videoId: id, dirname: __dirname });
+    });
+
+    const deleteUser = await prisma.user.delete({
+      where: { id: userId },
+    });
+
+    res.clearCookie('refresh_token', cookieOptions);
+
+    console.log(`============ user ${email} deleted`);
+
+    return res.redirect('http://localhost:3000');
+  } catch (error) {
+    if (error.message === ERROR_401) {
+      return res.status(401).end();
+    }
+
+    return res.status(500).end();
   }
 });
 
@@ -1118,11 +1163,7 @@ app.delete('/studio/video/:videoId', async (req, res) => {
       where: { id: videoId },
     });
 
-    const deleteVideoChunk = await prisma.videoChunk.deleteMany({
-      where: { videoId },
-    });
-
-    deleteVideoFromS3({ videoId });
+    deleteVideoResources({ videoId, dirname: __dirname });
 
     return res.status(200).end();
   } catch (error) {

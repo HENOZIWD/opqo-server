@@ -32,7 +32,7 @@ model Video {
   description     String?  @db.VarChar(5000)
   title           String?  @db.VarChar(100)
   isUploaded      Boolean  @default(false)
-  user            User     @relation("UserVideos", fields: [userId], references: [id])
+  user            User     @relation("UserVideos", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VideoChunk {

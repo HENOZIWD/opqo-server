@@ -63,180 +63,204 @@ function getContentTypeByFile(filename) {
 }
 
 async function uploadDirectoryToS3(localDir, s3Dir) {
-  const files = fs.readdirSync(localDir);
+  let keyLog = '';
+  try {
+    const files = fs.readdirSync(localDir);
 
-  for (const file of files) {
-    const fullPath = path.join(localDir, file);
-    const stat = fs.statSync(fullPath);
+    for (const file of files) {
+      const fullPath = path.join(localDir, file);
+      const stat = fs.statSync(fullPath);
 
-    if (stat.isDirectory()) {
-      await uploadDirectoryToS3(fullPath, `${s3Dir}/${file}`);
-    } else {
-      const fileStream = fs.createReadStream(fullPath);
+      if (stat.isDirectory()) {
+        await uploadDirectoryToS3(fullPath, `${s3Dir}/${file}`);
+      } else {
+        const fileStream = fs.createReadStream(fullPath);
 
-      const uploadParams = {
-        Bucket: AWS_S3_BUCKET_NAME,
-        Key: `${s3Dir}/${file}`,
-        Body: fileStream,
-        ContentType: getContentTypeByFile(file),
-      };
+        const uploadParams = {
+          Bucket: AWS_S3_BUCKET_NAME,
+          Key: `${s3Dir}/${file}`,
+          Body: fileStream,
+          ContentType: getContentTypeByFile(file),
+        };
 
-      try {
+        keyLog = uploadParams.Key;
+
         await client.send(new PutObjectCommand(uploadParams));
         console.log(`Uploaded: ${uploadParams.Key}`);
-      } catch (err) {
-        console.error(`Error uploading ${uploadParams.Key}:`, err);
       }
     }
+  } catch (err) {
+    console.error(`Error uploading ${keyLog}:`, err);
+    throw err;
   }
 }
 
 function generateHlsVideo({ videoId, extension, originalWidth, originalHeight, screen, target, dirname }) {
-  const inputPath = path.join(dirname, UPLOAD_DIR, videoId, VIDEO_DIR, `index.${extension}`);
-  const outputDir = path.join(dirname, UPLOAD_DIR, videoId, HLS_DIR, `${target}`);
+  try {
+    const inputPath = path.join(dirname, UPLOAD_DIR, videoId, VIDEO_DIR, `index.${extension}`);
+    const outputDir = path.join(dirname, UPLOAD_DIR, videoId, HLS_DIR, `${target}`);
 
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-
-  const scale = calculateResolution({
-    originalWidth,
-    originalHeight,
-    screen,
-    target,
-  });
-
-  let bandwidth;
-
-  if (target === TARGET_1080p) {
-    bandwidth = 4800000;
-  } else if (target === TARGET_720p) {
-    bandwidth = 2800000;
-  } else {
-    bandwidth = 640000;
-  }
-
-  const args = [
-    '-y',
-    '-i', inputPath,
-    '-profile:v', 'baseline',
-    '-level', target === TARGET_1080p ? '4.2' : '3.1',
-    '-start_number', '0',
-    '-hls_time', '5',
-    '-hls_list_size', '0',
-    '-vf', `scale=${scale}`,
-    '-f', 'hls',
-    '-hls_segment_filename', path.join(outputDir, 'segment_%03d.ts'),
-    path.join(outputDir, 'index.m3u8')
-  ];
-
-  const ffmpeg = spawn('ffmpeg', args);
-
-  ffmpeg.stdout.on('data', (data) => {
-    console.log(`[FFMPEG STDOUT]: ${data}`);
-  });
-
-  ffmpeg.stderr.on('data', (data) => {
-    console.error(`[FFMPEG STDERR]: ${data}`);
-  });
-
-
-  ffmpeg.on('close', async (code) => {
-    if (code === 0) {
-      const masterPath = path.join(dirname, UPLOAD_DIR, videoId, HLS_DIR, 'master.m3u8');
-
-      const [resWidth, resHeight] = scale.split(':');
-
-      const newEntry = `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${resWidth}x${resHeight}\n${target}/index.m3u8`;
-
-      let content = '';
-
-      if (fs.existsSync(masterPath)) {
-        content = fs.readFileSync(masterPath, 'utf-8');
-      } else {
-        content = '#EXTM3U\n';
-      }
-
-      const lines = content.split('\n');
-      const alreadyExists = lines.includes(`${target}/index.m3u8`);
-
-      if (!alreadyExists) {
-        content += `${newEntry}\n`;
-        fs.writeFileSync(masterPath, content, 'utf-8');
-
-        const s3Dir = `${videoId}/${target}`;
-
-        await uploadDirectoryToS3(outputDir, s3Dir);
-
-        const masterFile = fs.readFileSync(masterPath);
-
-        await client.send(new PutObjectCommand({
-          Bucket: AWS_S3_BUCKET_NAME,
-          Key: `${videoId}/master.m3u8`,
-          Body: masterFile,
-          ContentType: 'application/vnd.apple.mpegurl',
-        }));
-
-        const updateVideoData = await prisma.video.update({
-          where: { id: videoId },
-          data: { isUploaded: true },
-        });
-      }
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
     }
-  });
+
+    const scale = calculateResolution({
+      originalWidth,
+      originalHeight,
+      screen,
+      target,
+    });
+
+    let bandwidth;
+
+    if (target === TARGET_1080p) {
+      bandwidth = 4800000;
+    } else if (target === TARGET_720p) {
+      bandwidth = 2800000;
+    } else {
+      bandwidth = 640000;
+    }
+
+    const args = [
+      '-y',
+      '-i', inputPath,
+      '-profile:v', 'baseline',
+      '-level', target === TARGET_1080p ? '4.2' : '3.1',
+      '-start_number', '0',
+      '-hls_time', '5',
+      '-hls_list_size', '0',
+      '-vf', `scale=${scale}`,
+      '-f', 'hls',
+      '-hls_segment_filename', path.join(outputDir, 'segment_%03d.ts'),
+      path.join(outputDir, 'index.m3u8')
+    ];
+
+    const ffmpeg = spawn('ffmpeg', args);
+
+    ffmpeg.stdout.on('data', (data) => {
+      console.log(`[FFMPEG STDOUT]: ${data}`);
+    });
+
+    ffmpeg.stderr.on('data', (data) => {
+      console.error(`[FFMPEG STDERR]: ${data}`);
+    });
+
+
+    ffmpeg.on('close', async (code) => {
+      if (code === 0) {
+        try {
+          const masterPath = path.join(dirname, UPLOAD_DIR, videoId, HLS_DIR, 'master.m3u8');
+
+          const [resWidth, resHeight] = scale.split(':');
+
+          const newEntry = `#EXT-X-STREAM-INF:BANDWIDTH=${bandwidth},RESOLUTION=${resWidth}x${resHeight}\n${target}/index.m3u8`;
+
+          let content = '';
+
+          if (fs.existsSync(masterPath)) {
+            content = fs.readFileSync(masterPath, 'utf-8');
+          } else {
+            content = '#EXTM3U\n';
+          }
+
+          const lines = content.split('\n');
+          const alreadyExists = lines.includes(`${target}/index.m3u8`);
+
+          if (!alreadyExists) {
+            content += `${newEntry}\n`;
+            fs.writeFileSync(masterPath, content, 'utf-8');
+
+            const s3Dir = `${videoId}/${target}`;
+
+            await uploadDirectoryToS3(outputDir, s3Dir);
+
+            const masterFile = fs.readFileSync(masterPath);
+
+            await client.send(new PutObjectCommand({
+              Bucket: AWS_S3_BUCKET_NAME,
+              Key: `${videoId}/master.m3u8`,
+              Body: masterFile,
+              ContentType: 'application/vnd.apple.mpegurl',
+            }));
+
+            fs.rm(outputDir, { recursive: true, force: true }, () => {});
+
+            const updateVideoData = await prisma.video.update({
+              where: { id: videoId },
+              data: { isUploaded: true },
+            });
+          }
+        } catch (error) {
+          console.error(`Upload HLS video ${videoId} ${target} failed`, error);
+        }
+      }
+    });
+  } catch (error) {
+    console.error(`Generate HLS video ${videoId} ${target} failed`, error);
+  }
 }
 
 async function uploadThumbnailToS3({ videoId, thumbnailBuffer }) {
-  const convertedBuffer = await sharp(thumbnailBuffer)
-    .webp({ quality: 80 })
-    .toBuffer();
-
-  const uploadParams = {
-    Bucket: AWS_S3_BUCKET_NAME,
-    Key: `${videoId}/thumbnail.webp`,
-    Body: convertedBuffer,
-    ContentType: 'image/webp',
-  };
-
   try {
+    const convertedBuffer = await sharp(thumbnailBuffer)
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    const uploadParams = {
+      Bucket: AWS_S3_BUCKET_NAME,
+      Key: `${videoId}/thumbnail.webp`,
+      Body: convertedBuffer,
+      ContentType: 'image/webp',
+    };
+
     await client.send(new PutObjectCommand(uploadParams));
+
     console.log(`Thumbnail uploaded: ${uploadParams.Key}`);
   } catch (error) {
-    console.error(`Failed to upload thumbnail: ${error}`);
+    console.error(`Failed to upload thumbnail ${videoId}: ${error}`);
     throw error;
   }
 }
 
-async function deleteVideoFromS3({ videoId }) {
-  let continuationToken = undefined;
+async function deleteVideoResources({ videoId, dirname }) {
+  try {
+    let continuationToken = undefined;
 
-  do {
-    const listParams = {
-      Bucket: AWS_S3_BUCKET_NAME,
-      Prefix: videoId,
-      ContinuationToken: continuationToken,
-    };
+    const uploadDir = path.join(dirname, UPLOAD_DIR, videoId);
 
-    const listedObjects = await client.send(new ListObjectsV2Command(listParams));
+    fs.rmSync(uploadDir, { recursive: true, force: true });
 
-    if (!listedObjects.Contents || listedObjects.Contents.length === 0) {
-      return;
-    }
+    do {
+      const listParams = {
+        Bucket: AWS_S3_BUCKET_NAME,
+        Prefix: videoId,
+        ContinuationToken: continuationToken,
+      };
 
-    const deleteParams = {
-      Bucket: AWS_S3_BUCKET_NAME,
-      Delete: {
-        Objects: listedObjects.Contents
-          .filter((obj) => obj.Key)
-          .map((obj) => ({ Key: obj.Key })),
-      },
-    };
+      const listedObjects = await client.send(new ListObjectsV2Command(listParams));
 
-    const deleteResult = await client.send(new DeleteObjectsCommand(deleteParams));
+      if (!listedObjects.Contents || listedObjects.Contents.length === 0) {
+        return;
+      }
 
-    continuationToken = listedObjects.IsTruncated ? listedObjects.NextContinuationToken : undefined;
+      const deleteParams = {
+        Bucket: AWS_S3_BUCKET_NAME,
+        Delete: {
+          Objects: listedObjects.Contents
+            .filter((obj) => obj.Key)
+            .map((obj) => ({ Key: obj.Key })),
+        },
+      };
 
-  } while (continuationToken);
+      const deleteResult = await client.send(new DeleteObjectsCommand(deleteParams));
+
+      continuationToken = listedObjects.IsTruncated ? listedObjects.NextContinuationToken : undefined;
+
+      console.log(`Video ${videoId} deleted`);
+    } while (continuationToken);
+  } catch (error) {
+    console.error(`Failed to delete ${videoId}: ${error}`);
+  }
 }
 
 module.exports = {
@@ -250,5 +274,5 @@ module.exports = {
   TARGET_360p,
   generateHlsVideo,
   uploadThumbnailToS3,
-  deleteVideoFromS3,
+  deleteVideoResources,
 };
