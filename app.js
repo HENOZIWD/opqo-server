@@ -30,8 +30,16 @@ app.use(express.json());
 
 const cors = require('cors');
 
+const allowedOriginsDev = [
+  'http://localhost:3000',
+];
+
+const allowdOriginsProd = [
+  'https://opqo.kr',
+];
+
 const corsOptions = {
-  origin: 'http://localhost:3000',
+  origin: process.env.NODE_ENV === 'production' ? allowdOriginsProd : allowedOriginsDev,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
