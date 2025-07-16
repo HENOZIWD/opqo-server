@@ -169,7 +169,7 @@ app.get('/oauth2callback', async (req, res) => {
 
     console.log(`============ user ${email} login`);
 
-    return res.redirect('http://localhost:3000/auth');
+    return res.redirect(process.env.NODE_ENV === 'production' ? 'https://opqo.kr/auth' : 'http://localhost:3000/auth');
   } catch (error) {
     printAPIError({
       name: '/oauth2callback',
