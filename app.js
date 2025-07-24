@@ -1,8 +1,9 @@
-const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL } = require('./utils/env.js');
+const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL, INTERNAL_KEY_HEADER, VIDEO_SERVER_SECRET_KEY } = require('./utils/env.js');
 const { printAPIError, ERROR_400, ERROR_401, ERROR_404, ERROR_403 } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
 const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
-const { UPLOAD_DIR, CHUNK_DIR, VIDEO_DIR, generateHlsVideo, SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, uploadThumbnailToS3, deleteVideoFromS3, deleteVideoResources } = require('./utils/video.js');
+const { SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, deleteVideoResources, uploadThumbnailToS3 } = require('./utils/video.js');
+const { fetchInstance } = require('./utils/api.js');
 
 const express = require('express');
 const app = express();
@@ -12,9 +13,8 @@ const { google } = require('googleapis');
 const cookieParser = require('cookie-parser');
 const { PrismaClient } = require('@prisma/client');
 const { z } = require('zod');
-const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
+const FormData = require('form-data');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -297,7 +297,7 @@ app.delete('/channel', async (req, res) => {
     });
 
     findUser.videos?.forEach(({ id }) => {
-      deleteVideoResources({ videoId: id, dirname: __dirname });
+      deleteVideoResources(id);
     });
 
     const deleteUser = await prisma.user.delete({
@@ -604,8 +604,9 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
     }
 
     const fileBuffer = req.file?.buffer;
+    const fileName = req.file?.originalname;
 
-    if (!fileBuffer) {
+    if (!fileBuffer || !fileName) {
       throw new Error(ERROR_400);
     }
     
@@ -619,15 +620,17 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
       throw new Error(ERROR_403);
     }
 
-    const chunkDir = path.join(__dirname, UPLOAD_DIR, videoId, CHUNK_DIR);
+    const form = new FormData();
+    form.append('chunkFile', fileBuffer, {
+      filename: fileName,
+      contentType: req.file.mimetype,
+    });
 
-    if (!fs.existsSync(chunkDir)) {
-      fs.mkdirSync(chunkDir, { recursive: true });
-    }
-
-    const chunkPath = path.join(chunkDir, `${chunkIndex}`);
-
-    fs.writeFileSync(chunkPath, fileBuffer);
+    await fetchInstance.post(
+      `/video/${videoId}/chunk/${chunkIndex}`,
+      form,
+      { headers: form.getHeaders() },
+    );
 
     const updateChunk = await prisma.videoChunk.upsert({
       where: {
@@ -645,6 +648,7 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
 
     return res.status(200).end();
   } catch (error) {
+    console.error(error);
     if (error.message === ERROR_400) {
       return res.status(400).end();
     }
@@ -718,31 +722,7 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
       thumbnailBuffer: thumbnailImage.buffer,
     });
 
-    const chunkDir = path.join(__dirname, UPLOAD_DIR, videoId, CHUNK_DIR);
-    const chunkFiles = fs.readdirSync(chunkDir).map((chunkFileName) => parseInt(chunkFileName)).sort((a, b) => a - b);
-
-    const videoDir = path.join(__dirname, UPLOAD_DIR, videoId, VIDEO_DIR);
-
-    if (!fs.existsSync(videoDir)) {
-      fs.mkdirSync(videoDir, { recursive: true });
-    }
-
-    const videoPath = path.join(videoDir, 'index.mp4');
-
-    if (fs.existsSync(videoPath)) {
-      fs.unlinkSync(videoPath);
-    }
-
-    const fsPromises = fs.promises;
-
-    for (const chunkFileIndex of chunkFiles) {
-      const chunkFilePath = path.join(chunkDir, `${chunkFileIndex}`);
-      const chunkData = fs.readFileSync(chunkFilePath);
-      await fsPromises.appendFile(videoPath, chunkData);
-      fs.unlinkSync(chunkFilePath);
-    }
-
-    fs.rmSync(chunkDir, { recursive: true, force: true });
+    const result = await fetchInstance.post(`/video/${videoId}/merge`);
 
     const updateVideoData = await prisma.video.update({
       where: {
@@ -790,15 +770,12 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
     }
 
     for (const target of targetList) {
-      generateHlsVideo({
-        videoId,
+      fetchInstance.post(`/video/${videoId}/hls/${target}`, {
         extension,
         originalWidth: width,
         originalHeight: height,
         screen,
-        target,
-        dirname: __dirname,
-      });
+      }).catch(() => {});
     }
 
     return res.status(200).end();
@@ -819,6 +796,29 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
       return res.status(404).end();
     }
 
+    return res.status(500).end();
+  }
+});
+
+app.post('/hlsDone/:videoId', async (req, res) => {
+  try {
+    const key = req.headers[INTERNAL_KEY_HEADER];
+
+    if (key !== VIDEO_SERVER_SECRET_KEY) {
+      throw new Error();
+    }
+
+    const { videoId } = req.params;
+
+    const updateVideo = await prisma.video.update({
+      where: { id: videoId },
+      data: { isUploaded: true },
+    });
+
+    return res.status(200).end();
+  }
+  catch (error) {
+    console.error(error);
     return res.status(500).end();
   }
 });
@@ -1183,7 +1183,7 @@ app.delete('/studio/video/:videoId', async (req, res) => {
       where: { id: videoId },
     });
 
-    deleteVideoResources({ videoId, dirname: __dirname });
+    deleteVideoResources(videoId);
 
     return res.status(200).end();
   } catch (error) {
