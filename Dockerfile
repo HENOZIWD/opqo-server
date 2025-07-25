@@ -9,9 +9,9 @@ COPY . .
 
 RUN npx prisma generate
 
-FROM node:20-alpine
+RUN npm prune --production
 
-RUN apk add --no-cache ffmpeg
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -19,8 +19,6 @@ ENV NODE_ENV=production
 ENV PORT=8080
 
 COPY --from=builder /app ./
-
-RUN npm ci --only=production
 
 EXPOSE 8080
 
