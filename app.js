@@ -1,7 +1,7 @@
 const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL, INTERNAL_KEY_HEADER, VIDEO_SERVER_SECRET_KEY } = require('./utils/env.js');
 const { ERROR_400, ERROR_401, ERROR_404, ERROR_403, handleError } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
-const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
+const { generateJWT, getUserIdFromAccessToken } = require('./utils/token.js');
 const { SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, deleteVideoResources, uploadThumbnailToS3 } = require('./utils/video.js');
 const { fetchInstance } = require('./utils/api.js');
 
@@ -247,17 +247,7 @@ app.post('/signout', (req, res) => {
 
 app.head('/verifyToken', (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
+    getUserIdFromAccessToken(req.headers['authorization']);
 
     return res.status(200).end();
   } catch (error) {
@@ -270,19 +260,7 @@ app.head('/verifyToken', (req, res) => {
 
 app.delete('/channel', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const userId = decodedToken.id;
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const findUser = await prisma.user.findUnique({
       where: { id: userId },
@@ -342,19 +320,7 @@ app.get('/channel/:id', async (req, res) => {
 
 app.get('/studio', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const id = decodedToken.id;
+    const id = getUserIdFromAccessToken(req.headers['authorization']);
 
     const user = await prisma.user.findUnique({
       where: { id },
@@ -382,19 +348,7 @@ app.get('/studio', async (req, res) => {
 
 app.put('/studio', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const id = decodedToken.id;
+    const id = getUserIdFromAccessToken(req.headers['authorization']);
 
     const infoSchema = z.object({
       name: z.string()
@@ -431,17 +385,7 @@ app.put('/studio', async (req, res) => {
 
 app.post('/uploadVideo/metadata', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const videoMetadataSchema = z.object({
       hash: z.string(),
@@ -462,7 +406,7 @@ app.post('/uploadVideo/metadata', async (req, res) => {
     const findVideoMetadata = await prisma.video.findFirst({
       where: {
         hash: payload.data.hash,
-        userId: decodedToken.id,
+        userId,
         isUploaded: false,
         NOT: {
           title: null,
@@ -479,7 +423,7 @@ app.post('/uploadVideo/metadata', async (req, res) => {
           duration: payload.data.duration,
           extension: payload.data.extension,
           size: payload.data.size,
-          userId: decodedToken.id,
+          userId,
           totalChunkCount: payload.data.totalChunkCount,
         }
       });
@@ -498,17 +442,7 @@ app.post('/uploadVideo/metadata', async (req, res) => {
 
 app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const videoId = req.params.videoId;
     const chunkIndex = Number(req.params.chunkIndex);
@@ -523,7 +457,7 @@ app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
       throw new Error(ERROR_404);
     }
     
-    if (findVideo.userId !== decodedToken.id) {
+    if (findVideo.userId !== userId) {
       throw new Error(ERROR_403);
     }
 
@@ -551,17 +485,7 @@ app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
 
 app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const videoId = req.params.videoId;
     const chunkIndex = Number(req.params.chunkIndex);
@@ -583,7 +507,7 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
       throw new Error(ERROR_404);
     }
 
-    if (findVideo.userId !== decodedToken.id) {
+    if (findVideo.userId !== userId) {
       throw new Error(ERROR_403);
     }
 
@@ -624,17 +548,7 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
 
 app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const videoSchema = z.object({
       title: z.string()
@@ -666,7 +580,7 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
       throw new Error(ERROR_404);
     }
     
-    if (findVideo.userId !== decodedToken.id) {
+    if (findVideo.userId !== userId) {
       throw new Error(ERROR_403);
     }
 
@@ -875,19 +789,7 @@ app.get('/channel/:channelId/videoList', async (req, res) => {
 
 app.get('/studio/videoList', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const id = decodedToken.id;
+    const id = getUserIdFromAccessToken(req.headers['authorization']);
 
     const user = await prisma.user.findUnique({
       where: { id },
@@ -928,19 +830,7 @@ app.get('/studio/videoList', async (req, res) => {
 
 app.get('/studio/video/:videoId', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const userId = decodedToken.id;
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -988,19 +878,7 @@ app.get('/studio/video/:videoId', async (req, res) => {
 
 app.patch('/studio/video/:videoId', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const userId = decodedToken.id;
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -1070,19 +948,7 @@ app.patch('/studio/video/:videoId', async (req, res) => {
 
 app.delete('/studio/video/:videoId', async (req, res) => {
   try {
-    const [ tokenType, accessToken ] = req.headers['authorization']?.split(' ') || [];
-
-    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const decodedToken = verifyJWT(accessToken);
-
-    if (!decodedToken) {
-      throw new Error(ERROR_401);
-    }
-
-    const userId = decodedToken.id;
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

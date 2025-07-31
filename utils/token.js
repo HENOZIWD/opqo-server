@@ -30,8 +30,28 @@ function verifyJWT(token) {
 
 const TOKEN_TYPE_BEARER = 'Bearer';
 
+function getUserIdFromAccessToken(token) {
+  try {
+    const [ tokenType, accessToken ] = token?.split(' ') || [];
+
+    if (tokenType !== TOKEN_TYPE_BEARER || !accessToken) {
+      throw new Error(ERROR_401);
+    }
+
+    const decodedToken = verifyJWT(accessToken);
+
+    if (!decodedToken) {
+      throw new Error(ERROR_401);
+    }
+
+    return decodedToken.id;
+  }
+  catch (error) {
+    throw error;
+  }
+}
+
 module.exports = {
   generateJWT,
-  verifyJWT,
-  TOKEN_TYPE_BEARER,
+  getUserIdFromAccessToken,
 };
