@@ -7,8 +7,12 @@ function handleError({
   apiName,
   error,
   res,
+  printError = true,
 }) {
-  console.log(`============ API ${apiName} error:\n`, error);
+  if (printError) {
+    console.log(`============ API ${apiName} error:\n`, error);
+  }
+
   if (error.message === ERROR_400) {
     return res.status(400).end();
   }
