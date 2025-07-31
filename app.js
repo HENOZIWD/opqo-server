@@ -398,12 +398,12 @@ app.post('/uploadVideo/metadata', async (req, res) => {
 
     const videoMetadataSchema = z.object({
       hash: z.string(),
-      width: z.number().int(),
-      height: z.number().int(),
+      width: z.number().int().nonnegative(),
+      height: z.number().int().nonnegative(),
       duration: z.number(),
       extension: z.string(),
-      size: z.number().int(),
-      totalChunkCount: z.number().int(),
+      size: z.number().int().nonnegative(),
+      totalChunkCount: z.number().int().nonnegative(),
     });
 
     const payload = videoMetadataSchema.safeParse(req.body);
@@ -490,6 +490,7 @@ app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
       apiName: 'checkVideoChunkExist',
       error,
       res,
+      printError: false,
     });
   }
 });
@@ -733,6 +734,8 @@ app.get('/videoList', async (req, res) => {
 
 app.get('/video/:videoId', async (req, res) => {
   try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization'], { ignoreError: true });
+
     const { videoId } = req.params;
 
     const findVideo = await prisma.video.findUnique({
@@ -755,6 +758,19 @@ app.get('/video/:videoId', async (req, res) => {
       return res.status(404).end();
     }
 
+    let findWatchHistory = null;
+
+    if (userId) {
+      findWatchHistory = await prisma.watchHistory.findUnique({
+        where: {
+          videoId_userId: {
+            videoId,
+            userId,
+          }
+        }
+      });
+    }
+
     return res.status(200).json({
       id: findVideo.id,
       title: findVideo.title,
@@ -762,6 +778,7 @@ app.get('/video/:videoId', async (req, res) => {
       createdDate: findVideo.createdDate,
       duration: findVideo.duration,
       channel: findVideo.user,
+      watchProgress: findWatchHistory?.watchProgress ?? null,
     });
   } catch (error) {
     return handleError({
@@ -1007,6 +1024,53 @@ app.delete('/studio/video/:videoId', async (req, res) => {
   } catch (error) {
     return handleError({
       apiName: 'deleteVideo',
+      error,
+      res,
+    });
+  }
+});
+
+app.post('/history/:videoId', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const { videoId } = req.params;
+
+    const infoSchema = z.object({
+      watchProgress: z.number().int().nonnegative(),
+    });
+
+    const payload = infoSchema.safeParse(req.body);
+
+    if (!payload.success) {
+      throw new Error(ERROR_400);
+    }
+
+    const { watchProgress } = payload.data;
+
+    const updateWatchHistory = await prisma.watchHistory.upsert({
+      where: {
+        videoId_userId: {
+          videoId,
+          userId,
+        }
+      },
+      update: {
+        watchProgress,
+        watchedDate: new Date(),
+      },
+      create: {
+        videoId,
+        userId,
+        watchProgress,
+      },
+    });
+
+    return res.status(200).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'updateWatchHistory',
       error,
       res,
     });

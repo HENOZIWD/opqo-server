@@ -8,18 +8,19 @@ datasource db {
 }
 
 model User {
-  id           String   @id @unique
+  id           String         @id @unique
   refreshToken String
-  email        String   @unique
-  name         String   @db.VarChar(50)
-  description  String   @default("") @db.VarChar(1000)
-  createdDate  DateTime @default(now())
+  email        String         @unique
+  name         String         @db.VarChar(50)
+  description  String         @default("") @db.VarChar(1000)
+  createdDate  DateTime       @default(now())
   picture      String
-  videos       Video[]  @relation("UserVideos")
+  videos       Video[]        @relation("UserVideos")
+  watchHistory WatchHistory[] @relation("UserHistories")
 }
 
 model Video {
-  id              String   @id @unique @default(cuid())
+  id              String         @id @unique @default(cuid())
   hash            String
   width           Int
   height          Int
@@ -28,11 +29,12 @@ model Video {
   size            Int
   userId          String
   totalChunkCount Int
-  createdDate     DateTime @default(now())
-  description     String?  @db.VarChar(5000)
-  title           String?  @db.VarChar(100)
-  isUploaded      Boolean  @default(false)
-  user            User     @relation("UserVideos", fields: [userId], references: [id], onDelete: Cascade)
+  createdDate     DateTime       @default(now())
+  description     String?        @db.VarChar(5000)
+  title           String?        @db.VarChar(100)
+  isUploaded      Boolean        @default(false)
+  user            User           @relation("UserVideos", fields: [userId], references: [id], onDelete: Cascade)
+  watchHistory    WatchHistory[] @relation("VideoHistories")
 }
 
 model VideoChunk {
@@ -40,4 +42,15 @@ model VideoChunk {
   chunkIndex Int
 
   @@id([videoId, chunkIndex])
+}
+
+model WatchHistory {
+  videoId       String
+  userId        String
+  watchedDate   DateTime @default(now())
+  watchProgress Int
+  user          User     @relation("UserHistories", fields: [userId], references: [id], onDelete: Cascade)
+  video         Video    @relation("VideoHistories", fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@id([videoId, userId])
 }
