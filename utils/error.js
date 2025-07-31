@@ -6,6 +6,7 @@ const ERROR_404 = 'NOT_FOUND';
 function handleError({
   apiName,
   error,
+  res,
 }) {
   console.log(`============ API ${apiName} error:\n`, error);
   if (error.message === ERROR_400) {

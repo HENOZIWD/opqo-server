@@ -76,6 +76,7 @@ app.get('/auth', (req, res) => {
     return handleError({
       apiName: 'auth',
       error,
+      res,
     });
   }
 });
@@ -172,6 +173,7 @@ app.get('/oauth2callback', async (req, res) => {
     return handleError({
       apiName: 'oauth2callback',
       error,
+      res,
     });
   }
 });
@@ -228,6 +230,7 @@ app.post('/refreshToken', async (req, res) => {
     return handleError({
       apiName: 'refreshToken',
       error,
+      res,
     });
   }
 });
@@ -241,6 +244,7 @@ app.post('/signout', (req, res) => {
     return handleError({
       apiName: 'signout',
       error,
+      res,
     });
   }
 });
@@ -254,6 +258,7 @@ app.head('/verifyToken', (req, res) => {
     return handleError({
       apiName: 'verifyToken',
       error,
+      res,
     });
   }
 });
@@ -286,6 +291,7 @@ app.delete('/channel', async (req, res) => {
     return handleError({
       apiName: 'deleteChannel',
       error,
+      res,
     });
   }
 });
@@ -314,6 +320,7 @@ app.get('/channel/:id', async (req, res) => {
     return handleError({
       apiName: 'getChannelInfo',
       error,
+      res,
     });
   }
 });
@@ -342,6 +349,7 @@ app.get('/studio', async (req, res) => {
     return handleError({
       apiName: 'getStudioInfo',
       error,
+      res,
     });
   }
 });
@@ -379,6 +387,7 @@ app.put('/studio', async (req, res) => {
     return handleError({
       apiName: 'updateStudioInfo',
       error,
+      res,
     });
   }
 });
@@ -389,12 +398,12 @@ app.post('/uploadVideo/metadata', async (req, res) => {
 
     const videoMetadataSchema = z.object({
       hash: z.string(),
-      width: z.number(),
-      height: z.number(),
+      width: z.number().int(),
+      height: z.number().int(),
       duration: z.number(),
       extension: z.string(),
-      size: z.number(),
-      totalChunkCount: z.number(),
+      size: z.number().int(),
+      totalChunkCount: z.number().int(),
     });
 
     const payload = videoMetadataSchema.safeParse(req.body);
@@ -436,6 +445,7 @@ app.post('/uploadVideo/metadata', async (req, res) => {
     return handleError({
       apiName: 'uploadVideoMetadata',
       error,
+      res,
     });
   }
 });
@@ -479,6 +489,7 @@ app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
     return handleError({
       apiName: 'checkVideoChunkExist',
       error,
+      res,
     });
   }
 });
@@ -542,6 +553,7 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
     return handleError({
       apiName: 'uploadVideoChunk',
       error,
+      res,
     });
   }
 });
@@ -650,6 +662,7 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
     return handleError({
       apiName: 'uploadVideo',
       error,
+      res,
     });
   }
 });
@@ -675,6 +688,7 @@ app.post('/hlsDone/:videoId', async (req, res) => {
     return handleError({
       apiName: 'hlsDone',
       error,
+      res,
     });
   }
 });
@@ -712,6 +726,7 @@ app.get('/videoList', async (req, res) => {
     return handleError({
       apiName: 'getVideoList',
       error,
+      res,
     });
   }
 });
@@ -752,6 +767,7 @@ app.get('/video/:videoId', async (req, res) => {
     return handleError({
       apiName: 'getVideoInfo',
       error,
+      res,
     });
   }
 });
@@ -783,6 +799,7 @@ app.get('/channel/:channelId/videoList', async (req, res) => {
     return handleError({
       apiName: 'getChannelVideoList',
       error,
+      res,
     });
   }
 });
@@ -824,6 +841,7 @@ app.get('/studio/videoList', async (req, res) => {
     return handleError({
       apiName: 'getMyVideoList',
       error,
+      res,
     });
   }
 });
@@ -872,6 +890,7 @@ app.get('/studio/video/:videoId', async (req, res) => {
     return handleError({
       apiName: 'getMyVideoInfo',
       error,
+      res,
     });
   }
 });
@@ -942,6 +961,7 @@ app.patch('/studio/video/:videoId', async (req, res) => {
     return handleError({
       apiName: 'updateVideoInfo',
       error,
+      res,
     });
   }
 });
@@ -988,6 +1008,7 @@ app.delete('/studio/video/:videoId', async (req, res) => {
     return handleError({
       apiName: 'deleteVideo',
       error,
+      res,
     });
   }
 });
