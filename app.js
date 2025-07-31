@@ -1,5 +1,5 @@
 const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL, INTERNAL_KEY_HEADER, VIDEO_SERVER_SECRET_KEY } = require('./utils/env.js');
-const { printAPIError, ERROR_400, ERROR_401, ERROR_404, ERROR_403 } = require('./utils/error');
+const { ERROR_400, ERROR_401, ERROR_404, ERROR_403, handleError } = require('./utils/error');
 const { INTERNAL_SERVER_ERROR } = require('./utils/message');
 const { generateJWT, verifyJWT, TOKEN_TYPE_BEARER } = require('./utils/token.js');
 const { SCREEN_LANDSCAPE, SCREEN_PORTRAIT, TARGET_1080p, TARGET_720p, TARGET_360p, deleteVideoResources, uploadThumbnailToS3 } = require('./utils/video.js');
@@ -73,12 +73,10 @@ app.get('/auth', (req, res) => {
 
     return res.redirect(authUrl);
   } catch (error) {
-    printAPIError({
-      name: '/auth',
+    return handleError({
+      apiName: 'auth',
       error,
     });
-
-    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
   }
 });
 
@@ -171,12 +169,10 @@ app.get('/oauth2callback', async (req, res) => {
 
     return res.redirect(process.env.NODE_ENV === 'production' ? 'https://opqo.kr/auth' : 'http://localhost:3000/auth');
   } catch (error) {
-    printAPIError({
-      name: '/oauth2callback',
+    return handleError({
+      apiName: 'oauth2callback',
       error,
     });
-
-    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
   }
 });
 
@@ -229,12 +225,10 @@ app.post('/refreshToken', async (req, res) => {
 
     return res.status(200).json({ accessToken });
   } catch (error) {
-    printAPIError({
-      name: '/refreshToken',
+    return handleError({
+      apiName: 'refreshToken',
       error,
     });
-
-    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
   }
 });
 
@@ -244,12 +238,10 @@ app.post('/signout', (req, res) => {
 
     return res.status(200).end();
   } catch (error) {
-    printAPIError({
-      name: '/signout',
+    return handleError({
+      apiName: 'signout',
       error,
     });
-
-    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
   }
 });
 
@@ -268,8 +260,11 @@ app.head('/verifyToken', (req, res) => {
     }
 
     return res.status(200).end();
-  } catch {
-    return res.status(401).end();
+  } catch (error) {
+    return handleError({
+      apiName: 'verifyToken',
+      error,
+    });
   }
 });
 
@@ -310,12 +305,10 @@ app.delete('/channel', async (req, res) => {
 
     return res.status(200).end();
   } catch (error) {
-    console.error(error);
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'deleteChannel',
+      error,
+    });
   }
 });
 
@@ -340,12 +333,10 @@ app.get('/channel/:id', async (req, res) => {
       picture: user.picture,
     });
   } catch (error) {
-    printAPIError({
-      name: '/channel/:id',
+    return handleError({
+      apiName: 'getChannelInfo',
       error,
     });
-
-    return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
   }
 });
 
@@ -382,11 +373,10 @@ app.get('/studio', async (req, res) => {
       picture: user.picture,
     });
   } catch (error) {
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'getStudioInfo',
+      error,
+    });
   }
 });
 
@@ -432,15 +422,10 @@ app.put('/studio', async (req, res) => {
 
     return res.status(200).end();
   } catch (error) {
-    if (error.message === ERROR_400) {
-      return res.status(400).end();
-    }
-
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'updateStudioInfo',
+      error,
+    });
   }
 });
 
@@ -504,15 +489,10 @@ app.post('/uploadVideo/metadata', async (req, res) => {
 
     return res.status(200).json({ id: findVideoMetadata.id });
   } catch (error) {
-    if (error.message === ERROR_400) {
-      return res.status(400).end();
-    }
-
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'uploadVideoMetadata',
+      error,
+    });
   }
 });
 
@@ -562,23 +542,10 @@ app.head('/uploadVideo/:videoId/chunk/:chunkIndex', async (req, res) => {
 
     return res.status(200).end();
   } catch (error) {
-    if (error.message === ERROR_400) {
-      return res.status(400).end();
-    }
-
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    if (error.message === ERROR_403) {
-      return res.status(403).end();
-    }
-
-    if (error.message === ERROR_404) {
-      return res.status(404).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'checkVideoChunkExist',
+      error,
+    });
   }
 });
 
@@ -648,24 +615,10 @@ app.post('/uploadVideo/:videoId/chunk/:chunkIndex', upload.single('chunkFile'), 
 
     return res.status(200).end();
   } catch (error) {
-    console.error(error);
-    if (error.message === ERROR_400) {
-      return res.status(400).end();
-    }
-
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    if (error.message === ERROR_403) {
-      return res.status(403).end();
-    }
-
-    if (error.message === ERROR_404) {
-      return res.status(404).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'uploadVideoChunk',
+      error,
+    });
   }
 });
 
@@ -780,23 +733,10 @@ app.post('/uploadVideo/:videoId', upload.single('thumbnailImage'), async (req, r
 
     return res.status(200).end();
   } catch (error) {
-    if (error.message === ERROR_400) {
-      return res.status(400).end();
-    }
-
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    if (error.message === ERROR_403) {
-      return res.status(403).end();
-    }
-
-    if (error.message === ERROR_404) {
-      return res.status(404).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'uploadVideo',
+      error,
+    });
   }
 });
 
@@ -818,8 +758,10 @@ app.post('/hlsDone/:videoId', async (req, res) => {
     return res.status(200).end();
   }
   catch (error) {
-    console.error(error);
-    return res.status(500).end();
+    return handleError({
+      apiName: 'hlsDone',
+      error,
+    });
   }
 });
 
@@ -852,8 +794,11 @@ app.get('/videoList', async (req, res) => {
     }));
 
     return res.status(200).json(result);
-  } catch {
-    return res.status(500).end();
+  } catch (error) {
+    return handleError({
+      apiName: 'getVideoList',
+      error,
+    });
   }
 });
 
@@ -889,8 +834,11 @@ app.get('/video/:videoId', async (req, res) => {
       duration: findVideo.duration,
       channel: findVideo.user,
     });
-  } catch {
-    return res.status(500).end();
+  } catch (error) {
+    return handleError({
+      apiName: 'getVideoInfo',
+      error,
+    });
   }
 });
 
@@ -917,8 +865,11 @@ app.get('/channel/:channelId/videoList', async (req, res) => {
 
     return res.status(200).json(result);
 
-  } catch {
-    return res.status(500).end();
+  } catch (error) {
+    return handleError({
+      apiName: 'getChannelVideoList',
+      error,
+    });
   }
 });
 
@@ -968,11 +919,10 @@ app.get('/studio/videoList', async (req, res) => {
 
     return res.status(200).json(result);
   } catch (error) {
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'getMyVideoList',
+      error,
+    });
   }
 });
 
@@ -1029,15 +979,10 @@ app.get('/studio/video/:videoId', async (req, res) => {
       isUploaded: findVideo.isUploaded,
     });
   } catch (error) {
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    if (error.message === ERROR_404) {
-      return res.status(404).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'getMyVideoInfo',
+      error,
+    });
   }
 });
 
@@ -1116,23 +1061,10 @@ app.patch('/studio/video/:videoId', async (req, res) => {
 
     return res.status(200).end();
   } catch (error) {
-    if (error.message === ERROR_400) {
-      return res.status(400).end();
-    }
-
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    if (error.message === ERROR_403) {
-      return res.status(403).end();
-    }
-
-    if (error.message === ERROR_404) {
-      return res.status(404).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'updateVideoInfo',
+      error,
+    });
   }
 });
 
@@ -1187,19 +1119,10 @@ app.delete('/studio/video/:videoId', async (req, res) => {
 
     return res.status(200).end();
   } catch (error) {
-    if (error.message === ERROR_401) {
-      return res.status(401).end();
-    }
-
-    if (error.message === ERROR_403) {
-      return res.status(403).end();
-    }
-
-    if (error.message === ERROR_404) {
-      return res.status(404).end();
-    }
-
-    return res.status(500).end();
+    return handleError({
+      apiName: 'deleteVideo',
+      error,
+    });
   }
 });
 
