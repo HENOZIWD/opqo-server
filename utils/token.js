@@ -30,7 +30,7 @@ function verifyJWT(token) {
 
 const TOKEN_TYPE_BEARER = 'Bearer';
 
-function getUserIdFromAccessToken(token) {
+function getUserIdFromAccessToken(token, { ignoreError = false } = {}) {
   try {
     const [ tokenType, accessToken ] = token?.split(' ') || [];
 
@@ -47,6 +47,10 @@ function getUserIdFromAccessToken(token) {
     return decodedToken.id;
   }
   catch (error) {
+    if (ignoreError) {
+      return null;
+    }
+
     throw error;
   }
 }
