@@ -259,6 +259,7 @@ app.head('/verifyToken', (req, res) => {
       apiName: 'verifyToken',
       error,
       res,
+      printError: false,
     });
   }
 });
@@ -1071,6 +1072,48 @@ app.post('/history/:videoId', async (req, res) => {
   catch (error) {
     return handleError({
       apiName: 'updateWatchHistory',
+      error,
+      res,
+    });
+  }
+});
+
+app.get('/history', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const getWatchHistory = await prisma.watchHistory.findMany({
+      where: {
+        userId,
+      },
+      orderBy: {
+        watchedDate: 'desc',
+      },
+      select: {
+        watchProgress: true,
+        watchedDate: true,
+        video: {
+          select: {
+            id: true,
+            title: true,
+            duration: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                picture: true,
+              }
+            }
+          }
+        }
+      }
+    });
+
+    return res.status(200).json(getWatchHistory);
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'getWatchHistory',
       error,
       res,
     });

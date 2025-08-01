@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('./env');
+const { ERROR_401 } = require('./error');
 
 function generateJWT(payload) {
   try {
