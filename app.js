@@ -1120,6 +1120,32 @@ app.get('/history', async (req, res) => {
   }
 });
 
+app.delete('/history/:videoId', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const { videoId } = req.params;
+
+    const deleteWatchHistory = await prisma.watchHistory.delete({
+      where: {
+        videoId_userId: {
+          videoId,
+          userId,
+        },
+      },
+    });
+
+    return res.status(200).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'deleteWatchHistory',
+      error,
+      res,
+    });
+  }
+});
+
 app.listen(port, () => {
   console.log(`OpqO server listening on port ${port}`);
 });
