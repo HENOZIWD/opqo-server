@@ -697,6 +697,8 @@ app.post('/hlsDone/:videoId', async (req, res) => {
 
 app.get('/videoList', async (req, res) => {
   try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization'], { ignoreError: true });
+
     const findVideoList = await prisma.video.findMany({
       where: {
         isUploaded: true,
@@ -709,6 +711,11 @@ app.get('/videoList', async (req, res) => {
             picture: true,
           },
         },
+        watchHistory: userId ? {
+          where: {
+            userId,
+          },
+        } : undefined,
       },
       orderBy: {
         createdDate: 'desc',
@@ -721,6 +728,7 @@ app.get('/videoList', async (req, res) => {
       createdDate: video.createdDate,
       duration: video.duration,
       channel: video.user,
+      watchProgress: video.watchHistory?.[0]?.watchProgress,
     }));
 
     return res.status(200).json(result);
