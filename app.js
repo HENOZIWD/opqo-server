@@ -800,12 +800,21 @@ app.get('/video/:videoId', async (req, res) => {
 
 app.get('/channel/:channelId/videoList', async (req, res) => {
   try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization'], { ignoreError: true });
+
     const { channelId } = req.params;
 
     const findVideoList = await prisma.video.findMany({
       where: {
         userId: channelId,
         isUploaded: true,
+      },
+      include: {
+        watchHistory: userId ? {
+          where: {
+            userId,
+          },
+        } : undefined,
       },
       orderBy: {
         createdDate: 'desc',
@@ -817,6 +826,7 @@ app.get('/channel/:channelId/videoList', async (req, res) => {
       title: video.title,
       createdDate: video.createdDate,
       duration: video.duration,
+      watchProgress: video.watchHistory?.[0]?.watchProgress,
     }));
 
     return res.status(200).json(result);
