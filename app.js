@@ -1127,7 +1127,20 @@ app.get('/history', async (req, res) => {
       }
     });
 
-    return res.status(200).json(getWatchHistory);
+    const watchHistoryByDate = new Map();
+
+    getWatchHistory.forEach((watchHistory) => {
+      const dateKey = watchHistory.watchedDate.toDateString();
+      const prev = watchHistoryByDate.get(dateKey);
+      watchHistoryByDate.set(dateKey, prev ? [...prev, watchHistory] : [watchHistory]);
+    });
+
+    const result = [...watchHistoryByDate].map(([dateKey, watchHistories]) => ({
+      watchedDate: dateKey,
+      watchHistories,
+    }));
+
+    return res.status(200).json(result);
   }
   catch (error) {
     return handleError({
