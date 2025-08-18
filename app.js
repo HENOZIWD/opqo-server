@@ -1177,6 +1177,128 @@ app.delete('/history/:videoId', async (req, res) => {
   }
 });
 
+app.post('/comment/:videoId', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const { videoId } = req.params;
+
+    const commentSchema = z.object({
+      comment: z.string()
+        .transform((str) => str.trim())
+        .refine((str) => 1 <= str.length && str.length <= 5000),
+    });
+
+    const payload = commentSchema.safeParse(req.body);
+
+    if (!payload.success) {
+      throw new Error(ERROR_400);
+    }
+
+    const uploadComment = await prisma.comment.create({
+      data: {
+        userId,
+        videoId,
+        comment: payload.data.comment,
+      },
+    });
+
+    return res.status(200).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'uploadComment',
+      error,
+      res,
+    });
+  }
+});
+
+app.delete('/comment/:commentId', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const { commentId } = req.params;
+
+    const findComment = await prisma.comment.findUnique({
+      where: {
+        id: commentId,
+      },
+    });
+
+    if (!findComment) {
+      throw new Error(ERROR_404);
+    }
+
+    if (findComment.userId !== userId) {
+      throw new Error(ERROR_403);
+    }
+
+    const deleteComment = await prisma.comment.delete({
+      where: {
+        id: commentId,
+      },
+    });
+
+    return res.status(200).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'deleteComment',
+      error,
+      res,
+    });
+  }
+});
+
+app.get('/comment/:videoId', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization'], { ignoreError: true });
+
+    const { videoId } = req.params;
+
+    const getCommentList = await prisma.comment.findMany({
+      where: {
+        videoId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            picture: true,
+          },
+        },
+      },
+      orderBy: {
+        createdDate: 'desc'
+      },
+    });
+
+    const result = getCommentList.map(({
+      id,
+      comment,
+      createdDate,
+      user,
+    }) => ({
+      id,
+      comment,
+      createdDate,
+      isOwn: userId === user.id,
+      user,
+    }));
+    
+    return res.json(result).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'getCommentList',
+      error,
+      res,
+    });
+  }
+});
+
 app.listen(port, () => {
   console.log(`OpqO server listening on port ${port}`);
 });

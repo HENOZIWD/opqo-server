@@ -15,6 +15,7 @@ model User {
   description  String         @default("") @db.VarChar(1000)
   createdDate  DateTime       @default(now())
   picture      String
+  comments     Comment[]      @relation("UserComments")
   videos       Video[]        @relation("UserVideos")
   watchHistory WatchHistory[] @relation("UserHistories")
 }
@@ -33,6 +34,7 @@ model Video {
   description     String?        @db.VarChar(5000)
   title           String?        @db.VarChar(100)
   isUploaded      Boolean        @default(false)
+  comments        Comment[]      @relation("VideoComments")
   user            User           @relation("UserVideos", fields: [userId], references: [id], onDelete: Cascade)
   watchHistory    WatchHistory[] @relation("VideoHistories")
 }
@@ -53,4 +55,14 @@ model WatchHistory {
   video         Video    @relation("VideoHistories", fields: [videoId], references: [id], onDelete: Cascade)
 
   @@id([videoId, userId])
+}
+
+model Comment {
+  id          String   @id @unique @default(cuid())
+  createdDate DateTime @default(now())
+  comment     String   @db.VarChar(5000)
+  userId      String
+  videoId     String
+  user        User     @relation("UserComments", fields: [userId], references: [id], onDelete: Cascade)
+  video       Video    @relation("VideoComments", fields: [videoId], references: [id], onDelete: Cascade)
 }
