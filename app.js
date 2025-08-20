@@ -1203,7 +1203,24 @@ app.post('/comment/:videoId', async (req, res) => {
       },
     });
 
-    return res.status(200).end();
+    const getUser = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        picture: true,
+      },
+    });
+
+    return res.json({
+      id: uploadComment.id,
+      comment: uploadComment.comment,
+      createdDate: uploadComment.createdDate,
+      isOwn: true,
+      user: getUser,
+    }).end();
   }
   catch (error) {
     return handleError({
