@@ -1305,7 +1305,10 @@ app.get('/comment/:videoId', async (req, res) => {
       user,
     }));
     
-    return res.json(result).end();
+    return res.json({
+      count: result.length,
+      data: result,
+    }).end();
   }
   catch (error) {
     return handleError({
