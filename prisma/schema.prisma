@@ -8,16 +8,18 @@ datasource db {
 }
 
 model User {
-  id           String         @id @unique
-  refreshToken String
-  email        String         @unique
-  name         String         @db.VarChar(50)
-  description  String         @default("") @db.VarChar(1000)
-  createdDate  DateTime       @default(now())
-  picture      String
-  comments     Comment[]      @relation("UserComments")
-  videos       Video[]        @relation("UserVideos")
-  watchHistory WatchHistory[] @relation("UserHistories")
+  id            String         @id @unique
+  refreshToken  String
+  email         String         @unique
+  name          String         @db.VarChar(50)
+  description   String         @default("") @db.VarChar(1000)
+  createdDate   DateTime       @default(now())
+  picture       String
+  comments      Comment[]      @relation("UserComments")
+  LiveStreaming LiveStreaming?
+  StreamKey     StreamKey?
+  videos        Video[]        @relation("UserVideos")
+  watchHistory  WatchHistory[] @relation("UserHistories")
 }
 
 model Video {
@@ -65,4 +67,18 @@ model Comment {
   videoId     String
   user        User     @relation("UserComments", fields: [userId], references: [id], onDelete: Cascade)
   video       Video    @relation("VideoComments", fields: [videoId], references: [id], onDelete: Cascade)
+}
+
+model LiveStreaming {
+  userId          String   @id @unique
+  isStreaming     Boolean
+  streamStartDate DateTime
+  title           String   @db.VarChar(100)
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StreamKey {
+  userId String @id @unique
+  value  String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

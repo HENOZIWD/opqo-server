@@ -15,6 +15,7 @@ const { PrismaClient } = require('@prisma/client');
 const { z } = require('zod');
 const multer = require('multer');
 const FormData = require('form-data');
+const { createId } = require('@paralleldrive/cuid2');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -1313,6 +1314,34 @@ app.get('/comment/:videoId', async (req, res) => {
   catch (error) {
     return handleError({
       apiName: 'getCommentList',
+      error,
+      res,
+    });
+  }
+});
+
+app.post('/streamKey', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const generateStreamKey = await prisma.streamKey.upsert({
+      where: {
+        userId,
+      },
+      create: {
+        userId,
+        value: createId(),
+      },
+      update: {
+        value: createId(),
+      },
+    });
+    
+    return res.json({ streamKey: generateStreamKey.value }).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'generateStreamKey',
       error,
       res,
     });
