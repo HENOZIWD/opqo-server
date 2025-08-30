@@ -1348,6 +1348,71 @@ app.post('/streamKey', async (req, res) => {
   }
 });
 
+app.post('/liveStreamConfig', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const configSchema = z.object({
+      title: z.string()
+        .transform((str) => str.trim())
+        .refine((str) => 1 <= str.length && str.length <= 100),
+    });
+
+    const payload = configSchema.safeParse(req.body);
+
+    if (!payload.success) {
+      throw new Error(ERROR_400);
+    }
+
+    const { title } = payload.data;
+
+    const applyLiveStreamConfig = await prisma.liveStreaming.upsert({
+      where: {
+        userId,
+      },
+      create: {
+        userId,
+        isStreaming: false,
+        streamStartDate: new Date(),
+        title,
+      },
+      update: {
+        title,
+      }
+    });
+
+    return res.status(200).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'applyLiveStreamConfig',
+      error,
+      res,
+    });
+  }
+});
+
+app.get('/liveStreamConfig', async (req, res) => {
+  try {
+    const userId = getUserIdFromAccessToken(req.headers['authorization']);
+
+    const getLiveStreamConfig = await prisma.liveStreaming.findUnique({
+      where: {
+        userId,
+      },
+    });
+
+    return res.json({ title: getLiveStreamConfig?.title ?? '' }).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'getLiveStreamConfig',
+      error,
+      res,
+    });
+  }
+});
+
 app.listen(port, () => {
   console.log(`OpqO server listening on port ${port}`);
 });
