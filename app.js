@@ -304,6 +304,9 @@ app.get('/channel/:id', async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id },
+      include: {
+        liveStreaming: true,
+      },
     });
 
     if (!user) {
@@ -317,6 +320,7 @@ app.get('/channel/:id', async (req, res) => {
       description: user.description,
       createdDate: user.createdDate,
       picture: user.picture,
+      isStreaming: user.liveStreaming.isStreaming,
     });
   } catch (error) {
     return handleError({
@@ -1407,6 +1411,37 @@ app.get('/liveStreamConfig', async (req, res) => {
   catch (error) {
     return handleError({
       apiName: 'getLiveStreamConfig',
+      error,
+      res,
+    });
+  }
+});
+
+app.get('/liveStream/:channelId', async (req, res) => {
+  try {
+    const { channelId } = req.params;
+
+    const getLiveStreamInfo = await prisma.liveStreaming.findUnique({
+      where: { userId: channelId },
+      include: {
+        user: {
+          select: {
+            name: true,
+            picture: true,
+          }
+        }
+      }
+    });
+
+    if (!getLiveStreamInfo) {
+      throw new Error(ERROR_404);
+    }
+
+    return res.json(getLiveStreamInfo).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'getLiveStreamInfo',
       error,
       res,
     });

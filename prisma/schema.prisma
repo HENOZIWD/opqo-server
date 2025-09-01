@@ -16,8 +16,8 @@ model User {
   createdDate   DateTime       @default(now())
   picture       String
   comments      Comment[]      @relation("UserComments")
-  LiveStreaming LiveStreaming?
-  StreamKey     StreamKey?
+  liveStreaming LiveStreaming?
+  streamKey     StreamKey?
   videos        Video[]        @relation("UserVideos")
   watchHistory  WatchHistory[] @relation("UserHistories")
 }
@@ -74,11 +74,11 @@ model LiveStreaming {
   isStreaming     Boolean
   streamStartDate DateTime
   title           String   @db.VarChar(100)
-  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model StreamKey {
   userId String @id @unique
-  value  String
-  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  value  String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
