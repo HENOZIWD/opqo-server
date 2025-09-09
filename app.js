@@ -826,6 +826,12 @@ app.get('/channel/:channelId/videoList', async (req, res) => {
       },
     });
 
+    const streamingInfo = await prisma.liveStreaming.findUnique({
+      where: {
+        userId: channelId,
+      }
+    })
+
     const result = findVideoList.map((video) => ({
       id: video.id,
       title: video.title,
@@ -834,7 +840,10 @@ app.get('/channel/:channelId/videoList', async (req, res) => {
       watchProgress: video.watchHistory?.[0]?.watchProgress,
     }));
 
-    return res.status(200).json(result);
+    return res.status(200).json({
+      streamingInfo,
+      videoList: result,
+    });
 
   } catch (error) {
     return handleError({
