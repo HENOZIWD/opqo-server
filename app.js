@@ -9,6 +9,26 @@ const express = require('express');
 const app = express();
 const port = 8080;
 
+const allowedOriginsDev = [
+  'http://localhost:3000',
+];
+
+const allowdOriginsProd = [
+  'https://opqo.kr',
+];
+
+const http = require('http');
+const { Server } = require('socket.io');
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.NODE_ENV === 'production' ? allowdOriginsProd : allowedOriginsDev,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+});
+
 const { google } = require('googleapis');
 const cookieParser = require('cookie-parser');
 const { PrismaClient } = require('@prisma/client');
@@ -30,14 +50,6 @@ app.use(cookieParser());
 app.use(express.json());
 
 const cors = require('cors');
-
-const allowedOriginsDev = [
-  'http://localhost:3000',
-];
-
-const allowdOriginsProd = [
-  'https://opqo.kr',
-];
 
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' ? allowdOriginsProd : allowedOriginsDev,
@@ -1457,6 +1469,30 @@ app.get('/liveStream/:channelId', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
+io.on('connection', (socket) => {
+  console.log('사용자 연결됨:', socket.id);
+
+  socket.on('join room', (roomId, callback) => {
+    socket.join(roomId);
+
+    if (callback) {
+      callback({ success: true });
+    }
+  });
+
+  socket.on('chat message', ({ roomId, id, name, message }) => {
+    io.to(roomId).emit('chat message', {
+      id: `${id}-${Date.now()}`,
+      name,
+      message,
+    });
+  });
+
+  socket.on('disconnect', () => {
+    console.log('사용자 연결 종료:', socket.id);
+  });
+});
+
+server.listen(port, () => {
   console.log(`OpqO server listening on port ${port}`);
 });
