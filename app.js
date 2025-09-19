@@ -1469,11 +1469,39 @@ app.get('/liveStream/:channelId', async (req, res) => {
   }
 });
 
+const chatRoomParticipantCountIntervals = new Map();
+
 io.on('connection', (socket) => {
   console.log('사용자 연결됨:', socket.id);
 
   socket.on('join room', (roomId, callback) => {
     socket.join(roomId);
+
+    if (!chatRoomParticipantCountIntervals.has(roomId)) {
+      const intervalId = setInterval(() => {
+        (async () => {
+          try {
+            const count = io.of('/').adapter.rooms.get(roomId)?.size ?? 0;
+            if (count > 0) {
+              const updateChatRoomParticipants = await prisma.liveStreaming.update({
+                where: { userId: roomId },
+                data: { viewerCount: count },
+              });
+              console.log(`${roomId} count:`, count);
+            }
+            else {
+              clearInterval(intervalId);
+              chatRoomParticipantCountIntervals.delete(roomId);
+              console.log(`room ${roomId} interval cleared`);
+            }
+          } catch (error) {
+            console.error('chatRoom update error:', error);
+          }
+        })();
+      }, 60 * 1000);
+
+      chatRoomParticipantCountIntervals.set(roomId, intervalId);
+    }
 
     if (callback) {
       callback({ success: true });

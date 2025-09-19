@@ -74,6 +74,7 @@ model LiveStreaming {
   isStreaming     Boolean
   streamStartDate DateTime
   title           String   @db.VarChar(100)
+  viewerCount     Int      @default(0)
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
