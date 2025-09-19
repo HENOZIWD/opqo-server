@@ -1482,14 +1482,15 @@ io.on('connection', (socket) => {
         (async () => {
           try {
             const count = io.of('/').adapter.rooms.get(roomId)?.size ?? 0;
-            if (count > 0) {
-              const updateChatRoomParticipants = await prisma.liveStreaming.update({
-                where: { userId: roomId },
-                data: { viewerCount: count },
-              });
-              console.log(`${roomId} count:`, count);
-            }
-            else {
+
+            const updateChatRoomParticipants = await prisma.liveStreaming.update({
+              where: { userId: roomId },
+              data: { viewerCount: count },
+            });
+
+            console.log(`room ${roomId} count:`, count);
+
+            if (count === 0) {
               clearInterval(intervalId);
               chatRoomParticipantCountIntervals.delete(roomId);
               console.log(`room ${roomId} interval cleared`);
