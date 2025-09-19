@@ -1469,6 +1469,35 @@ app.get('/liveStream/:channelId', async (req, res) => {
   }
 });
 
+app.get('/liveStreamList', async (req, res) => {
+  try {
+    const getLiveStreamList = await prisma.liveStreaming.findMany({
+      where: { isStreaming: true },
+      orderBy: {
+        streamStartDate: 'desc',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            picture: true,
+          },
+        },
+      },
+    });
+
+    return res.json(getLiveStreamList).end();
+  }
+  catch (error) {
+    return handleError({
+      apiName: 'getLiveStreamList',
+      error,
+      res,
+    });
+  }
+});
+
 const chatRoomParticipantCountIntervals = new Map();
 
 io.on('connection', (socket) => {
