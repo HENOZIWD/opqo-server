@@ -332,7 +332,7 @@ app.get('/channel/:id', async (req, res) => {
       description: user.description,
       createdDate: user.createdDate,
       picture: user.picture,
-      isStreaming: user.liveStreaming.isStreaming,
+      isStreaming: user.liveStreaming?.isStreaming ?? false,
     });
   } catch (error) {
     return handleError({
