@@ -62,8 +62,8 @@ app.use(cors(corsOptions));
 
 const cookieOptions = {
   httpOnly: true,
-  secure: false,
-  sameSite: 'strict',
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
 }
 
 app.get('/', (req, res) => {
@@ -174,20 +174,33 @@ app.get('/oauth2callback', async (req, res) => {
       }
     }
 
-    res.cookie('refresh_token', refreshToken, {
+    const accessToken = generateJWT({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture: data.picture !== user.picture ? data.picture : user.picture,
+    });
+
+    if (!accessToken) {
+      throw new Error('AccessToken generate failed');
+    }
+
+    res.cookie('refreshToken', refreshToken, {
       ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+    res.cookie('accessToken', accessToken, {
+      ...cookieOptions,
+      maxAge: 30 * 60 * 1000, // 30 minutes
     });
 
     console.log(`============ user ${email} login`);
 
-    return res.redirect(process.env.NODE_ENV === 'production' ? 'https://opqo.kr/auth' : 'http://localhost:3000/auth');
+    return res.redirect(process.env.NODE_ENV === 'production' ? 'https://opqo.kr/' : 'http://localhost:3000/');
   } catch (error) {
-    return handleError({
-      apiName: 'oauth2callback',
-      error,
-      res,
-    });
+    console.error('login Error', error);
+
+    return res.redirect(process.env.NODE_ENV === 'production' ? 'https://opqo.kr/loginError' : 'http://localhost:3000/loginError');
   }
 });
 
@@ -238,6 +251,11 @@ app.post('/refreshToken', async (req, res) => {
       return res.status(500).json({ error: INTERNAL_SERVER_ERROR });
     }
 
+    res.cookie('accessToken', accessToken, {
+      ...cookieOptions,
+      maxAge: 30 * 60 * 1000, // 30 minutes
+    });
+
     return res.status(200).json({ accessToken });
   } catch (error) {
     return handleError({
@@ -250,7 +268,8 @@ app.post('/refreshToken', async (req, res) => {
 
 app.post('/signout', (req, res) => {
   try {
-    res.clearCookie('refresh_token', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
+    res.clearCookie('accessToken', cookieOptions);
 
     return res.status(200).end();
   } catch (error) {
