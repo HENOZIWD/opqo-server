@@ -113,7 +113,7 @@ app.get('/oauth2callback', async (req, res) => {
 
     const { id, email, picture } = data;
 
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { id },
     });
 
@@ -129,7 +129,7 @@ app.get('/oauth2callback', async (req, res) => {
         return res.redirect(authUrl);
       }
 
-      const generateUser = await prisma.user.create({
+      user = await prisma.user.create({
         data: {
           id,
           refreshToken,
@@ -315,7 +315,8 @@ app.delete('/channel', async (req, res) => {
       where: { id: userId },
     });
 
-    res.clearCookie('refresh_token', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
+    res.clearCookie('accessToken', cookieOptions);
 
     console.log(`============ user ${findUser.email} deleted`);
 
